@@ -41,6 +41,11 @@ pub struct Words {
     pub menu_autostart: &'static str,
     pub menu_language: &'static str,
     pub menu_quit: &'static str,
+    pub settings: &'static str,
+    pub dnd: &'static str,
+    pub dnd_note: &'static str,
+    pub sound_note: &'static str,
+    pub autostart_note: &'static str,
 }
 
 const EN: Words = Words {
@@ -62,6 +67,11 @@ const EN: Words = Words {
     menu_autostart: "Start with Windows",
     menu_language: "Language",
     menu_quit: "Quit",
+    settings: "Settings",
+    dnd: "Do not disturb",
+    dnd_note: "No toasts or sound, the strip still counts",
+    sound_note: "A soft chime with each toast",
+    autostart_note: "Appears on the taskbar after you sign in",
 };
 
 const RU: Words = Words {
@@ -83,6 +93,11 @@ const RU: Words = Words {
     menu_autostart: "Запускать вместе с Windows",
     menu_language: "Язык",
     menu_quit: "Выход",
+    settings: "Настройки",
+    dnd: "Не беспокоить",
+    dnd_note: "Без уведомлений и звука, счётчики работают",
+    sound_note: "Мягкий сигнал с каждым уведомлением",
+    autostart_note: "Появляется на панели задач после входа",
 };
 
 impl Lang {

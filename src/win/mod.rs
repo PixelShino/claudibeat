@@ -63,6 +63,7 @@ pub enum Action {
     MarkAllSeen,
     ToggleSound,
     ToggleAutostart,
+    ToggleDnd,
     SetLanguage(crate::text::Lang),
     Quit,
 }

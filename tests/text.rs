@@ -154,7 +154,7 @@ fn english_limits() {
 fn every_word_has_both_languages() {
     for lang in [EN, RU] {
         let w = lang.words();
-        for s in [w.flyout_title, w.empty, w.memory, w.limits, w.open_chat, w.show_all, w.no_folder, w.menu_seen, w.menu_sound, w.menu_autostart, w.menu_language, w.menu_quit, w.limit_unknown] {
+        for s in [w.flyout_title, w.empty, w.memory, w.limits, w.open_chat, w.show_all, w.no_folder, w.menu_seen, w.menu_sound, w.menu_autostart, w.menu_language, w.menu_quit, w.limit_unknown, w.settings, w.dnd, w.dnd_note, w.sound_note, w.autostart_note] {
             assert!(!s.is_empty());
         }
     }

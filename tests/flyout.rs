@@ -1,7 +1,7 @@
 use claudibeat::memory::MemGroups;
 use claudibeat::merge::{Row, groups};
 use claudibeat::model::SessionState;
-use claudibeat::render::flyout::{FlyoutModel, layout_flyout};
+use claudibeat::render::flyout::{FlyoutHit, FlyoutLayout, FlyoutModel, FlyoutView, Prefs, layout_flyout};
 use claudibeat::render::{Renderer, TRANSPARENT};
 use claudibeat::text::Lang;
 
@@ -38,7 +38,17 @@ fn model<'a>(rows: &'a [Row], expanded: [bool; 3]) -> FlyoutModel<'a> {
         now: 0,
         tz: 0,
         lang: Lang::En,
+        view: FlyoutView::Sessions,
+        prefs: Prefs::default(),
     }
+}
+
+fn control(l: &FlyoutLayout, hit: &FlyoutHit) -> claudibeat::render::Rect {
+    l.controls.iter().find(|(h, _)| h == hit).map(|(_, r)| *r).unwrap_or_else(|| panic!("no {hit:?} in {:?}", l.controls))
+}
+
+fn centre(r: claudibeat::render::Rect) -> (f32, f32) {
+    (r.x + r.w / 2.0, r.y + r.h / 2.0)
 }
 
 #[test]
@@ -82,6 +92,64 @@ fn tall_list_is_capped_and_scrolls() {
         assert_eq!(capped.height, 600.0);
         assert!(capped.scroll_max > 0.0);
         assert_eq!(full.scroll_max, 0.0);
+    })
+    .unwrap();
+}
+
+#[test]
+fn the_gear_sits_in_the_header_and_answers_clicks() {
+    let r = Renderer::new().unwrap();
+    let data = rows(2);
+    r.render(10.0, 10.0, 1.0, TRANSPARENT, |p| {
+        let l = layout_flyout(&model(&data, [false; 3]), p, 2_000.0);
+        let gear = control(&l, &FlyoutHit::Gear);
+        assert!(gear.bottom() <= l.list.y, "the gear belongs to the header, above the list");
+        assert!(gear.right() <= l.card.right() && gear.x > l.card.x + l.card.w / 2.0, "on the right");
+        let (x, y) = centre(gear);
+        assert_eq!(l.hit(x, y, 0.0), Some(FlyoutHit::Gear));
+    })
+    .unwrap();
+}
+
+#[test]
+fn the_footer_holds_do_not_disturb_and_the_language() {
+    let r = Renderer::new().unwrap();
+    let data = rows(2);
+    r.render(10.0, 10.0, 1.0, TRANSPARENT, |p| {
+        let l = layout_flyout(&model(&data, [false; 3]), p, 2_000.0);
+        for hit in [FlyoutHit::Dnd, FlyoutHit::Lang(Lang::En), FlyoutHit::Lang(Lang::Ru)] {
+            let rect = control(&l, &hit);
+            assert!(rect.y >= l.list.bottom(), "{hit:?} sits below the sessions");
+            assert!(rect.bottom() <= l.card.bottom());
+            let (x, y) = centre(rect);
+            assert_eq!(l.hit(x, y, 0.0), Some(hit.clone()));
+            assert_eq!(l.hit(x, y, 30.0), Some(hit), "controls do not scroll with the list");
+        }
+        let dnd = control(&l, &FlyoutHit::Dnd);
+        let en = control(&l, &FlyoutHit::Lang(Lang::En));
+        assert!(dnd.right() < en.x, "do not disturb on the left, the language on the right");
+    })
+    .unwrap();
+}
+
+#[test]
+fn settings_replace_the_list_and_lead_back() {
+    let r = Renderer::new().unwrap();
+    let data = rows(2);
+    r.render(10.0, 10.0, 1.0, TRANSPARENT, |p| {
+        let mut m = model(&data, [false; 3]);
+        m.view = FlyoutView::Settings;
+        let l = layout_flyout(&m, p, 2_000.0);
+        assert!(l.rows.is_empty(), "no sessions on the settings page");
+        let back = control(&l, &FlyoutHit::Back);
+        assert!(back.x < l.card.x + 40.0, "back sits at the top left");
+        let order: Vec<f32> = [FlyoutHit::Dnd, FlyoutHit::Sound, FlyoutHit::Autostart, FlyoutHit::Lang(Lang::En)]
+            .iter()
+            .map(|h| control(&l, h).y)
+            .collect();
+        assert!(order.windows(2).all(|w| w[0] < w[1]), "one setting per row, top to bottom: {order:?}");
+        let (x, y) = centre(control(&l, &FlyoutHit::Lang(Lang::Ru)));
+        assert_eq!(l.hit(x, y, 0.0), Some(FlyoutHit::Lang(Lang::Ru)));
     })
     .unwrap();
 }

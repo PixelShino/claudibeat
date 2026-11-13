@@ -10,7 +10,7 @@ use crate::limits::{LimitView, limit_views, strip_limit};
 use crate::memory::{self, MemGroups};
 use crate::merge::{Row, counts, groups, merge_rows, open_target};
 use crate::notify::{Notifier, ToastKind, ToastStack};
-use crate::render::flyout::{FlyoutHit, FlyoutLayout, FlyoutModel, M_BOTTOM, M_SIDE, layout_flyout, paint_flyout};
+use crate::render::flyout::{FlyoutHit, FlyoutLayout, FlyoutModel, FlyoutView, M_BOTTOM, M_SIDE, Prefs, layout_flyout, paint_flyout};
 use crate::render::strip::{STRIP_H, StripItem, StripLayout, StripModel, layout_strip, paint_strip};
 use crate::render::toast::{T_SIDE, T_TOP, TOAST_W, ToastModel, layout_toast, paint_toast, paint_tooltip, toast_model, tooltip_size};
 use crate::render::{Rect, Renderer, TRANSPARENT};
@@ -172,7 +172,8 @@ pub struct App {
     fly_geo: Option<FlyGeo>,
     expanded: [bool; 3],
     scroll: f32,
-    fly_hover: Option<String>,
+    fly_hover: Option<FlyoutHit>,
+    fly_view: FlyoutView,
 
     toasts: Popup,
     toast_geo: Option<ToastGeo>,
@@ -211,6 +212,7 @@ impl App {
             expanded: [false; 3],
             scroll: 0.0,
             fly_hover: None,
+            fly_view: FlyoutView::Sessions,
             toasts: Popup::new(instance, Surface::Toasts)?,
             toast_geo: None,
             toast_hovered: false,
@@ -244,7 +246,10 @@ impl App {
         let events = self.notifier.observe(&self.rows, now);
         let needing: HashMap<String, SessionState> = self.rows.iter().filter(|r| r.needs_you).map(|r| (r.key.clone(), r.state)).collect();
         self.stack.retain_needing(&needing);
-        if let Some(first) = events.first() {
+        if self.settings.dnd {
+            // Do not disturb: the notifier still learns what changed, so
+            // nothing old pops up when it is switched off; nothing is shown.
+        } else if let Some(first) = events.first() {
             let chime = if events.iter().any(|e| e.kind.is_waiting()) { ToastKind::Waiting } else { first.kind };
             for e in events {
                 self.stack.push(e);
@@ -264,6 +269,10 @@ impl App {
         if self.toast_hover_close.is_some_and(|i| i >= self.stack.items.len()) {
             self.toast_hover_close = None;
         }
+    }
+
+    fn prefs(&self) -> Prefs {
+        Prefs { dnd: self.settings.dnd, sound: self.settings.sound, autostart: shell::autostart_get() }
     }
 
     fn strip_model(&self) -> StripModel {
@@ -356,6 +365,8 @@ impl App {
             now: now_ms(),
             tz: self.tz,
             lang: self.settings.language,
+            view: self.fly_view,
+            prefs: self.prefs(),
         };
         // The window may reach the top of the work area; the list scrolls.
         let avail = (geo.rect.top - geo.work_top) as f32 / geo.scale;
@@ -366,7 +377,7 @@ impl App {
         self.scroll = self.scroll.clamp(0.0, l.scroll_max);
         let dx = EDGE - l.card.x;
         let (w, h) = (EDGE + l.card.w + M_SIDE, l.card.bottom() + GAP);
-        let (hover, scroll) = (self.fly_hover.as_deref(), self.scroll);
+        let (hover, scroll) = (self.fly_hover.as_ref(), self.scroll);
         let Ok(frame) = self.renderer.render(w, h, geo.scale, TRANSPARENT, |p| p.translate(dx, 0.0, |p| paint_flyout(p, &l, &model, hover, scroll))) else {
             return;
         };
@@ -481,8 +492,22 @@ impl App {
             Action::ToggleSound => {
                 self.settings.sound = !self.settings.sound;
                 let _ = self.settings.save(&self.settings_path);
+                self.redraw_flyout();
             }
-            Action::ToggleAutostart => shell::autostart_set(!shell::autostart_get()),
+            Action::ToggleAutostart => {
+                shell::autostart_set(!shell::autostart_get());
+                self.redraw_flyout();
+            }
+            Action::ToggleDnd => {
+                self.settings.dnd = !self.settings.dnd;
+                let _ = self.settings.save(&self.settings_path);
+                if self.settings.dnd {
+                    // Switching it on clears what is already on screen.
+                    self.stack.items.clear();
+                    self.forget_gone_toasts();
+                }
+                self.draw_all();
+            }
             Action::SetLanguage(lang) => {
                 self.settings.language = lang;
                 let _ = self.settings.save(&self.settings_path);
@@ -509,11 +534,26 @@ impl App {
         self.refresh();
     }
 
+    fn redraw_flyout(&mut self) {
+        if self.flyout.visible() {
+            self.draw_flyout();
+        }
+    }
+
+    /// Switch the open window between the sessions and the settings.
+    fn show_view(&mut self, view: FlyoutView) {
+        self.fly_view = view;
+        self.scroll = 0.0;
+        self.fly_hover = None;
+        self.draw_flyout();
+    }
+
     fn open_flyout(&mut self) {
         self.hide_tip();
         self.expanded = [false; 3];
         self.scroll = 0.0;
         self.fly_hover = None;
+        self.fly_view = FlyoutView::Sessions;
         self.draw_flyout();
         self.draw_toasts();
     }
@@ -554,16 +594,13 @@ impl App {
             Input::RightClick(Surface::Strip) => {
                 self.hide_tip();
                 let pending = self.rows.iter().any(|r| r.needs_you);
-                if let Some(a) = strip_window::menu(self.host, pending, self.settings.sound, shell::autostart_get(), self.settings.language) {
+                if let Some(a) = strip_window::menu(self.host, pending, self.prefs(), self.settings.language) {
                     self.act(a);
                 }
             }
 
             Input::Move(Surface::Flyout, x, y) => {
-                let hover = match self.flyout_at(x, y).0 {
-                    Some(FlyoutHit::Row(key)) => Some(key),
-                    _ => None,
-                };
+                let hover = self.flyout_at(x, y).0.filter(|h| !matches!(h, FlyoutHit::More(_)));
                 if hover != self.fly_hover {
                     self.fly_hover = hover;
                     self.draw_flyout();
@@ -579,6 +616,12 @@ impl App {
                     self.expanded[g] = true;
                     self.draw_flyout();
                 }
+                (Some(FlyoutHit::Gear), _) => self.show_view(FlyoutView::Settings),
+                (Some(FlyoutHit::Back), _) => self.show_view(FlyoutView::Sessions),
+                (Some(FlyoutHit::Dnd), _) => self.act(Action::ToggleDnd),
+                (Some(FlyoutHit::Sound), _) => self.act(Action::ToggleSound),
+                (Some(FlyoutHit::Autostart), _) => self.act(Action::ToggleAutostart),
+                (Some(FlyoutHit::Lang(lang)), _) => self.act(Action::SetLanguage(lang)),
                 (None, false) => self.close_flyout(),
                 (None, true) => {}
             },
@@ -591,6 +634,8 @@ impl App {
                     self.draw_flyout();
                 }
             }
+            // Esc on the settings page steps back; on the list it closes.
+            Input::Escape(Surface::Flyout) if self.flyout.visible() && self.fly_view == FlyoutView::Settings => self.show_view(FlyoutView::Sessions),
             Input::Escape(Surface::Flyout) | Input::Deactivated(Surface::Flyout) if self.flyout.visible() => self.close_flyout(),
 
             Input::Move(Surface::Toasts, x, y) => {

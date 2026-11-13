@@ -1,8 +1,10 @@
-//! The window above the strip: sessions by group, memory, limits.
+//! The window above the strip: sessions by group, memory, limits, and a
+//! footer with "do not disturb" and the language. The gear in the header
+//! turns the same window into the settings page, with a way back.
 //! Sizes follow `.fly` in `docs/mockups/base.css` (mock-up v1 flyout).
 
 use super::icons::{Icon, icon};
-use super::{HAIR, HOVER, INK, MUTED, Painter, Rect, SURFACE, TIME, TRACK, TextStyle, Weight};
+use super::{HAIR, HOVER, INK, MUTED, PILL, PILL_INK, Painter, Rect, SURFACE, TIME, TRACK, TextStyle, Weight};
 use crate::limits::{LimitView, LimitWindow};
 use crate::memory::MemGroups;
 use crate::merge::{Groups, Row, open_target};
@@ -25,6 +27,14 @@ const ROW_TITLE_HOT: TextStyle = TextStyle::new(13.0, Weight::Semibold, INK);
 const ROW_TIME: TextStyle = TextStyle::new(12.0, Weight::Regular, TIME);
 const MEM_NAME: TextStyle = TextStyle::new(12.5, Weight::Regular, INK);
 const BIG: TextStyle = TextStyle::new(13.0, Weight::Semibold, INK);
+const SEGMENT: TextStyle = TextStyle::new(12.0, Weight::Semibold, MUTED);
+
+/// Header buttons (gear, back): a 28-DIP square.
+const BUTTON: f32 = 28.0;
+/// The footer: gap, hairline, padding, a 28-DIP control row, padding.
+const FOOTER_H: f32 = 6.0 + 1.0 + FOOTER_PAD + 28.0 + FOOTER_PAD;
+const FOOTER_PAD: f32 = 8.0;
+const CHECK: f32 = 16.0;
 
 const GROUP_ICONS: [Icon; 3] = [Icon::Wait, Icon::Done, Icon::Star];
 
@@ -38,6 +48,24 @@ pub struct FlyoutModel<'a> {
     pub now: i64,
     pub tz: i32,
     pub lang: Lang,
+    pub view: FlyoutView,
+    pub prefs: Prefs,
+}
+
+/// Which page the window shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FlyoutView {
+    #[default]
+    Sessions,
+    Settings,
+}
+
+/// The switches the window shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Prefs {
+    pub dnd: bool,
+    pub sound: bool,
+    pub autostart: bool,
 }
 
 impl FlyoutModel<'_> {
@@ -71,19 +99,32 @@ pub struct FlyoutLayout {
     /// The scrolling viewport of the session list.
     pub list: Rect,
     pub scroll_max: f32,
+    /// Buttons that never scroll: gear or back, the switches, the languages.
+    pub controls: Vec<(FlyoutHit, Rect)>,
     blocks: Vec<(Block, Rect)>,
     title_y: f32,
     bottom_y: f32,
+    /// Settings page: the language row, whose two halves are controls.
+    lang_row: Rect,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FlyoutHit {
     Row(String),
     More(usize),
+    Gear,
+    Back,
+    Dnd,
+    Sound,
+    Autostart,
+    Lang(Lang),
 }
 
 impl FlyoutLayout {
     pub fn hit(&self, x: f32, y: f32, scroll: f32) -> Option<FlyoutHit> {
+        if let Some((hit, _)) = self.controls.iter().find(|(_, r)| r.contains(x, y)) {
+            return Some(hit.clone());
+        }
         if !self.list.contains(x, y) {
             return None;
         }
@@ -120,10 +161,66 @@ fn bottom_height(h: &Heights, has_limits: bool) -> f32 {
     let head = 4.0 + h.h12 + 6.0;
     let memory = section_gap + head + 4.0 + 10.0 + 4.0 * (3.0 + h.h125 + 3.0) + 2.0;
     let limits = if has_limits { section_gap + head + (h.h13 + h.h12).max(22.0) + 2.0 } else { 0.0 };
-    memory + limits + 10.0
+    memory + limits + FOOTER_H
+}
+
+/// The header button on the title line: `left` or right-aligned.
+fn header_button(card: Rect, title_y: f32, h14: f32, left: bool) -> Rect {
+    // The glyph lines up with the text and counts, 16 DIPs in from the edge.
+    let x = if left { card.x + 8.0 } else { card.right() - 10.0 - BUTTON };
+    Rect::new(x, title_y + h14 / 2.0 - BUTTON / 2.0, BUTTON, BUTTON)
+}
+
+/// Two segments, English and Russian, ending at `right` and centred on `cy`.
+fn language_segments(p: &Painter, right: f32, cy: f32) -> [(FlyoutHit, Rect); 2] {
+    let h = 24.0;
+    let width = |l: Lang| p.measure(l.name(), &SEGMENT).0 + 20.0;
+    let ru = Rect::new(right - 2.0 - width(Lang::Ru), cy - h / 2.0, width(Lang::Ru), h);
+    let en = Rect::new(ru.x - width(Lang::En), cy - h / 2.0, width(Lang::En), h);
+    [(FlyoutHit::Lang(Lang::En), en), (FlyoutHit::Lang(Lang::Ru), ru)]
+}
+
+fn settings_row_height(h: &Heights) -> f32 {
+    9.0 + h.h13 + 2.0 + h.h12 + 9.0
+}
+
+fn layout_settings(m: &FlyoutModel, p: &Painter) -> FlyoutLayout {
+    let h = heights(p);
+    let (card_x, card_y) = (M_SIDE, M_TOP);
+    let title_y = card_y + 6.0 + 10.0;
+    let probe = Rect::new(card_x, card_y, CARD_W, 0.0);
+    let mut controls = vec![(FlyoutHit::Back, header_button(probe, title_y, h.h14, true))];
+    let mut y = title_y + h.h14 + 8.0 + 1.0 + 4.0;
+    let rh = settings_row_height(&h);
+    for hit in [FlyoutHit::Dnd, FlyoutHit::Sound, FlyoutHit::Autostart] {
+        controls.push((hit, Rect::new(card_x + 8.0, y, CARD_W - 16.0, rh)));
+        y += rh;
+    }
+    let lang_row = Rect::new(card_x + 8.0, y, CARD_W - 16.0, rh);
+    controls.extend(language_segments(p, lang_row.right() - 8.0, lang_row.y + rh / 2.0));
+    y += rh;
+    let _ = m;
+    let card_h = y + 8.0 - card_y;
+    FlyoutLayout {
+        width: CARD_W + 2.0 * M_SIDE,
+        height: card_y + card_h + M_BOTTOM,
+        card: Rect::new(card_x, card_y, CARD_W, card_h),
+        rows: Vec::new(),
+        more: Vec::new(),
+        list: Rect::new(card_x, y, CARD_W, 0.0),
+        scroll_max: 0.0,
+        controls,
+        blocks: Vec::new(),
+        title_y,
+        bottom_y: y,
+        lang_row,
+    }
 }
 
 pub fn layout_flyout(m: &FlyoutModel, p: &Painter, max_h: f32) -> FlyoutLayout {
+    if m.view == FlyoutView::Settings {
+        return layout_settings(m, p);
+    }
     let h = heights(p);
     let card_x = M_SIDE;
     let card_y = M_TOP;
@@ -195,17 +292,27 @@ pub fn layout_flyout(m: &FlyoutModel, p: &Painter, max_h: f32) -> FlyoutLayout {
         .collect();
     let more = blocks.iter().filter_map(|(b, r)| if let Block::More { group, .. } = b { Some((*group, *r)) } else { None }).collect();
 
+    let card = Rect::new(card_x, card_y, CARD_W, card_h);
+    let mut controls = vec![(FlyoutHit::Gear, header_button(card, title_y, h.h14, false))];
+    // Footer row: "do not disturb" on the left, the language on the right.
+    let row_y = card.bottom() - FOOTER_PAD - 28.0;
+    let dnd_w = 8.0 + CHECK + 8.0 + p.measure(m.lang.words().dnd, &MEM_NAME).0 + 10.0;
+    controls.push((FlyoutHit::Dnd, Rect::new(card.x + 8.0, row_y, dnd_w, 28.0)));
+    controls.extend(language_segments(p, card.right() - 16.0, row_y + 14.0));
+
     FlyoutLayout {
         width: CARD_W + 2.0 * M_SIDE,
         height: card_y + card_h + M_BOTTOM,
-        card: Rect::new(card_x, card_y, CARD_W, card_h),
+        card,
         rows,
         more,
         list,
         scroll_max: (list_h - viewport_h).max(0.0),
+        controls,
         blocks,
         title_y,
         bottom_y: list_top + viewport_h,
+        lang_row: Rect::default(),
     }
 }
 
@@ -230,16 +337,93 @@ fn text_right(p: &Painter, text: &str, right: f32, y: f32, style: &TextStyle) {
     p.text(text, right - w, y, style);
 }
 
-pub fn paint_flyout(p: &Painter, l: &FlyoutLayout, m: &FlyoutModel, hover_row: Option<&str>, scroll: f32) {
+fn control(l: &FlyoutLayout, hit: &FlyoutHit) -> Option<Rect> {
+    l.controls.iter().find(|(h, _)| h == hit).map(|(_, r)| *r)
+}
+
+/// A square check box, `CHECK` DIPs, its top-left at (`x`, `y`).
+fn check_box(p: &Painter, x: f32, y: f32, on: bool) {
+    let r = Rect::new(x, y, CHECK, CHECK);
+    if on {
+        p.fill_round(r, 4.0, PILL);
+        p.polyline(&[(x + 4.2, y + 8.3), (x + 6.9, y + 10.9), (x + 11.8, y + 5.6)], 1.8, PILL_INK);
+    } else {
+        p.stroke_round_rect(Rect::new(x + 0.75, y + 0.75, CHECK - 1.5, CHECK - 1.5), 3.5, 1.5, MUTED);
+    }
+}
+
+/// English and Russian side by side; the current one is a black pill.
+fn paint_languages(p: &Painter, l: &FlyoutLayout, m: &FlyoutModel, hover: Option<&FlyoutHit>) {
+    let (Some(en), Some(ru)) = (control(l, &FlyoutHit::Lang(Lang::En)), control(l, &FlyoutHit::Lang(Lang::Ru))) else { return };
+    p.fill_round(Rect::new(en.x - 2.0, en.y - 2.0, ru.right() - en.x + 4.0, en.h + 4.0), 7.0, HOVER);
+    for (lang, r) in [(Lang::En, en), (Lang::Ru, ru)] {
+        let on = m.lang == lang;
+        if on {
+            p.fill_round(r, 5.0, PILL);
+        } else if hover == Some(&FlyoutHit::Lang(lang)) {
+            p.fill_round(r, 5.0, HOVER);
+        }
+        let style = TextStyle { color: if on { PILL_INK } else if hover == Some(&FlyoutHit::Lang(lang)) { INK } else { MUTED }, ..SEGMENT };
+        let (tw, th) = p.measure(lang.name(), &style);
+        p.text(lang.name(), r.x + (r.w - tw) / 2.0, r.y + (r.h - th) / 2.0, &style);
+    }
+}
+
+fn paint_button(p: &Painter, r: Rect, glyph: Icon, hot: bool) {
+    if hot {
+        p.fill_round(r, 6.0, HOVER);
+    }
+    icon(p, glyph, r.x + r.w / 2.0, r.y + r.h / 2.0, 16.0, INK);
+}
+
+fn paint_settings(p: &Painter, l: &FlyoutLayout, m: &FlyoutModel, hover: Option<&FlyoutHit>) {
+    let h = heights(p);
+    let card = l.card;
+    let w = m.lang.words();
+    if let Some(back) = control(l, &FlyoutHit::Back) {
+        paint_button(p, back, Icon::Back, hover == Some(&FlyoutHit::Back));
+        p.text(w.settings, back.right() + 4.0, l.title_y, &TITLE);
+    }
+    p.fill_rect(Rect::new(card.x, l.title_y + h.h14 + 8.0, CARD_W, 1.0), HAIR);
+    for (hit, title, note, on) in [
+        (FlyoutHit::Dnd, w.dnd, w.dnd_note, m.prefs.dnd),
+        (FlyoutHit::Sound, w.menu_sound, w.sound_note, m.prefs.sound),
+        (FlyoutHit::Autostart, w.menu_autostart, w.autostart_note, m.prefs.autostart),
+    ] {
+        let Some(r) = control(l, &hit) else { continue };
+        if hover == Some(&hit) {
+            p.fill_round(r, 6.0, HOVER);
+        }
+        let top = r.y + 9.0;
+        p.text(title, r.x + 8.0, top, &ROW_TITLE);
+        p.text(note, r.x + 8.0, top + h.h13 + 2.0, &SMALL);
+        check_box(p, r.right() - 8.0 - CHECK, r.y + (r.h - CHECK) / 2.0, on);
+    }
+    let row = l.lang_row;
+    p.text(w.menu_language, row.x + 8.0, row.y + (row.h - h.h13) / 2.0, &ROW_TITLE);
+    paint_languages(p, l, m, hover);
+}
+
+pub fn paint_flyout(p: &Painter, l: &FlyoutLayout, m: &FlyoutModel, hover: Option<&FlyoutHit>, scroll: f32) {
     let h = heights(p);
     let card = l.card;
     p.card_shadow(card, RADIUS);
     p.fill_round(card, RADIUS, SURFACE);
+    if m.view == FlyoutView::Settings {
+        paint_settings(p, l, m, hover);
+        return;
+    }
+    let hover_row = match hover {
+        Some(FlyoutHit::Row(key)) => Some(key.as_str()),
+        _ => None,
+    };
 
-    // Title and total, on one baseline.
+    // Title, then the total and the gear on the same line.
     let w = m.lang.words();
     p.text(w.flyout_title, card.x + 16.0, l.title_y, &TITLE);
-    text_right(p, &total(m.lang, m.total), card.right() - 16.0, l.title_y + (h.h14 - h.h12) * 0.75, &SMALL);
+    let gear = control(l, &FlyoutHit::Gear).unwrap_or_default();
+    paint_button(p, gear, Icon::Gear, hover == Some(&FlyoutHit::Gear));
+    text_right(p, &total(m.lang, m.total), gear.x - 4.0, l.title_y + (h.h14 - h.h12) * 0.75, &SMALL);
 
     let scroll = scroll.clamp(0.0, l.scroll_max);
     p.clip(l.list, |p| {
@@ -311,6 +495,8 @@ pub fn paint_flyout(p: &Painter, l: &FlyoutLayout, m: &FlyoutModel, hover_row: O
     }
     y += 2.0;
 
+    paint_footer(p, l, m, hover);
+
     // Limits.
     if m.limits.is_empty() {
         return;
@@ -333,4 +519,18 @@ pub fn paint_flyout(p: &Painter, l: &FlyoutLayout, m: &FlyoutModel, hover_row: O
         let caption_w = p.text(&limit_caption(m.lang, v, m.now, m.tz), tx, ty + h.h13, &SMALL);
         x = tx + caption_w + 24.0;
     }
+}
+
+/// The footer: "do not disturb" as a check box on the left, the language on the right.
+fn paint_footer(p: &Painter, l: &FlyoutLayout, m: &FlyoutModel, hover: Option<&FlyoutHit>) {
+    let card = l.card;
+    let Some(dnd) = control(l, &FlyoutHit::Dnd) else { return };
+    p.fill_rect(Rect::new(card.x, dnd.y - FOOTER_PAD - 1.0, CARD_W, 1.0), HAIR);
+    if hover == Some(&FlyoutHit::Dnd) {
+        p.fill_round(dnd, 6.0, HOVER);
+    }
+    check_box(p, dnd.x + 8.0, dnd.y + (dnd.h - CHECK) / 2.0, m.prefs.dnd);
+    let (_, th) = p.measure("Ag", &MEM_NAME);
+    p.text(m.lang.words().dnd, dnd.x + 8.0 + CHECK + 8.0, dnd.y + (dnd.h - th) / 2.0, &MEM_NAME);
+    paint_languages(p, l, m, hover);
 }

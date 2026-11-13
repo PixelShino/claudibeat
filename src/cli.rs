@@ -7,7 +7,7 @@ use crate::memory::MemGroups;
 use crate::merge::{Row, groups};
 use crate::model::SessionState;
 use crate::notify::{ToastEvent, ToastKind};
-use crate::render::flyout::{FlyoutModel, layout_flyout, paint_flyout};
+use crate::render::flyout::{FlyoutHit, FlyoutModel, FlyoutView, Prefs, layout_flyout, paint_flyout};
 use crate::render::strip::{STRIP_H, StripItem, StripModel, layout_strip, paint_strip};
 use crate::render::toast::{layout_toast, paint_toast, paint_tooltip, toast_model, tooltip_size};
 use crate::render::{Color, Painter, Rect, Renderer, TRANSPARENT};
@@ -123,14 +123,28 @@ pub fn render_samples(dir: &Path, bg: Option<&Path>, lang: Lang) -> windows::cor
     }
 
     let strip = strip_samples()[0].model;
-    let flyouts: [(&str, usize, [bool; 3], f32); 3] = [
-        ("flyout", 0, [false; 3], 2_000.0),
-        ("flyout-expanded", 0, [false, false, true], 2_000.0),
-        ("flyout-scroll", 11, [true, false, false], 640.0),
+    let w1 = FlyoutHit::Row("w1".into());
+    let prefs = Prefs { dnd: false, sound: true, autostart: true };
+    struct Sample {
+        name: &'static str,
+        extra: usize,
+        expanded: [bool; 3],
+        max_h: f32,
+        view: FlyoutView,
+        hover: Option<FlyoutHit>,
+        prefs: Prefs,
+    }
+    let list = |name, extra, expanded, max_h, hover| Sample { name, extra, expanded, max_h, view: FlyoutView::Sessions, hover, prefs };
+    let flyouts = [
+        list("flyout", 0, [false; 3], 2_000.0, Some(w1.clone())),
+        list("flyout-expanded", 0, [false, false, true], 2_000.0, Some(w1.clone())),
+        list("flyout-scroll", 11, [true, false, false], 640.0, Some(w1)),
+        Sample { prefs: Prefs { dnd: true, ..prefs }, ..list("flyout-dnd", 0, [false; 3], 2_000.0, Some(FlyoutHit::Gear)) },
+        Sample { view: FlyoutView::Settings, ..list("flyout-settings", 0, [false; 3], 2_000.0, Some(FlyoutHit::Sound)) },
     ];
-    for (name, extra, expanded, max_h) in flyouts {
+    for Sample { name, extra, expanded, max_h, view, hover, prefs } in flyouts {
         let rows = demo_rows(extra, lang);
-        let m = FlyoutModel { groups: groups(&rows), total: 48, expanded, mem: demo_mem(), limits: demo_limits(), now: NOW, tz: TZ, lang };
+        let m = FlyoutModel { groups: groups(&rows), total: 48, expanded, mem: demo_mem(), limits: demo_limits(), now: NOW, tz: TZ, lang, view, prefs };
         let mut size = (0.0, 0.0);
         r.render(1.0, 1.0, 1.0, TRANSPARENT, |p| {
             let l = layout_flyout(&m, p, max_h);
@@ -141,7 +155,7 @@ pub fn render_samples(dir: &Path, bg: Option<&Path>, lang: Lang) -> windows::cor
             scene(p, h, bg, &strip, None);
             let l = layout_flyout(&m, p, max_h);
             p.translate(8.0 - l.card.x, h - STRIP_H - 12.0 - l.card.bottom(), |p| {
-                paint_flyout(p, &l, &m, Some("w1"), if name == "flyout-scroll" { 40.0 } else { 0.0 });
+                paint_flyout(p, &l, &m, hover.as_ref(), if name == "flyout-scroll" { 40.0 } else { 0.0 });
             });
         })?;
         r.save_png(&frame, &dir.join(format!("{name}.png")))?;

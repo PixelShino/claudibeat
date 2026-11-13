@@ -17,6 +17,10 @@ pub enum Icon {
     MemFull,
     /// Close cross.
     Close,
+    /// Gear: settings.
+    Gear,
+    /// Chevron pointing left: back.
+    Back,
 }
 
 /// Draw `icon` centred on (`cx`, `cy`), `size` DIPs across.
@@ -62,6 +66,24 @@ pub fn icon(p: &Painter, icon: Icon, cx: f32, cy: f32, size: f32, color: Color) 
         Icon::Close => {
             line(3.5, 3.5, 10.5, 10.5, 1.25);
             line(10.5, 3.5, 3.5, 10.5, 1.25);
+        }
+        Icon::Gear => {
+            // Eight flat-topped teeth round a hub, outlined like the other glyphs.
+            let (outer, inner) = (6.1_f32, 4.6_f32);
+            let mut points = Vec::with_capacity(33);
+            for i in 0..8 {
+                let a = (i as f32) * std::f32::consts::FRAC_PI_4;
+                for (da, r) in [(-0.21, outer), (0.21, outer), (0.36, inner), (0.785 - 0.36, inner)] {
+                    points.push(at(7.0 + r * (a + da).cos(), 7.0 + r * (a + da).sin()));
+                }
+            }
+            points.push(points[0]);
+            p.polyline(&points, 1.3 * k, color);
+            let c = at(7.0, 7.0);
+            p.stroke_circle(c.0, c.1, 1.9 * k, 1.3 * k, color);
+        }
+        Icon::Back => {
+            p.polyline(&[at(8.75, 3.0), at(4.75, 7.0), at(8.75, 11.0)], 1.5 * k, color);
         }
     }
 }

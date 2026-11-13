@@ -11,7 +11,7 @@
 [![Windows 11](https://img.shields.io/badge/Windows-11-1d1d1d?style=flat-square&logo=windows11&logoColor=white)](#requirements)
 [![Rust](https://img.shields.io/badge/Rust-stable-1d1d1d?style=flat-square&logo=rust&logoColor=white)](#build)
 [![License: MIT](https://img.shields.io/badge/license-MIT-1d1d1d?style=flat-square)](LICENSE)
-[![exe size](https://img.shields.io/badge/exe-689_KiB-5d5d5d?style=flat-square)](#footprint)
+[![exe size](https://img.shields.io/badge/exe-735_KiB-5d5d5d?style=flat-square)](#footprint)
 [![memory](https://img.shields.io/badge/memory-9.6_MB-5d5d5d?style=flat-square)](#footprint)
 [![network: none](https://img.shields.io/badge/network-none-5d5d5d?style=flat-square)](#privacy)
 
@@ -21,7 +21,7 @@ When you run eight Claude sessions at once, the hard part isn't the work; it's n
 
 Subagents don't count. One chat tab is one session, however many helpers it spawned.
 
-<p align="center"><img src="docs/media/en/flyout.png" width="420" alt="The sessions window above the strip: sessions grouped into waiting, done and working, then memory by group, then the 5-hour and weekly limits"></p>
+<p align="center"><img src="docs/media/en/flyout.png" width="420" alt="The sessions window above the strip: sessions grouped into waiting, done and working, then memory by group, the 5-hour and weekly limits, and at the bottom a do-not-disturb box and the language"></p>
 
 ## What you get
 
@@ -46,7 +46,13 @@ Subagents don't count. One chat tab is one session, however many helpers it spaw
 - Clicking a toast opens the chat and marks it seen. The cross only dismisses it; the counter stays.
 - A short soft chime is synthesised in memory (about −18 dBFS), never the system "ding". You can turn it off.
 
-**English or Russian.** English is the default. Right-click the strip, open **Language** and pick **Русский**; the choice is remembered.
+**Quiet when you need it.** Tick **Do not disturb** at the bottom of the sessions window and no toasts or sounds arrive. The strip keeps counting, so nothing is lost, and switching it off doesn't replay what you missed.
+
+**Settings in the same window.** The gear next to the title turns the sessions window into its settings: do not disturb, the notification sound, starting with Windows, the language. The arrow, or Esc, takes you back to the list.
+
+<p align="center"><img src="docs/media/en/settings.png" width="420" alt="The settings page in the sessions window: do not disturb, notification sound, start with Windows, and English or Russian"></p>
+
+**English or Russian.** English is the default. Pick **Русский** at the bottom of the sessions window, in the settings or in the right-click menu; the choice is remembered.
 
 ## Requirements
 
@@ -61,12 +67,13 @@ cargo +stable-x86_64-pc-windows-gnu build --release
 .\target\release\claudibeat.exe
 ```
 
-The GNU toolchain needs no Visual Studio; the MSVC toolchain should work too but isn't tested yet. There's no installer and no runtime: one 689 KiB executable. A second copy refuses to start.
+The GNU toolchain needs no Visual Studio; the MSVC toolchain should work too but isn't tested yet. There's no installer and no runtime: one 735 KiB executable. A second copy refuses to start.
 
 ## Use
 
 - **Left click** a counter: open the one chat, or the sessions window.
-- **Right click** the strip: Mark all as seen, Notification sound, Start with Windows (off by default), Language, Quit.
+- **Right click** the strip: Mark all as seen, Do not disturb, Notification sound, Start with Windows (off by default), Language, Quit.
+- **The gear** in the sessions window opens the same settings without the menu.
 - Settings live in `%APPDATA%\claudibeat\settings.json`. Autostart is a single `claudibeat` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
 - `claudibeat.exe --render <dir> [--lang en|ru]` draws every surface to PNG with invented demo sessions (that's where the pictures above come from). `claudibeat.exe --dump <file>` writes today's counts, memory and limits as JSON, handy for checking the numbers without any window.
 
@@ -92,7 +99,7 @@ Measured on the author's machine (16 logical CPUs, 32 GB RAM) over three minutes
 
 | | |
 |---|---|
-| Executable | 689 KiB (`lto`, `strip`, `panic = "abort"`) |
+| Executable | 735 KiB (`lto`, `strip`, `panic = "abort"`) |
 | Memory, private working set | 9.6 MB |
 | CPU | 0.07% of the machine on average (1.1% of one core) |
 | Back after an Explorer restart | 0.97 s |

@@ -18,10 +18,11 @@ fn missing_file_means_sound_on() {
 #[test]
 fn round_trip() {
     let path = tmp("settings_round_trip");
-    Settings { sound: false, language: Lang::Ru }.save(&path).unwrap();
+    Settings { sound: false, language: Lang::Ru, dnd: true }.save(&path).unwrap();
     let back = Settings::load(&path);
     assert!(!back.sound);
     assert_eq!(back.language, Lang::Ru);
+    assert!(back.dnd);
 }
 
 #[test]
@@ -54,4 +55,5 @@ fn older_file_without_language_means_english() {
     let s = Settings::load(&path);
     assert!(!s.sound);
     assert_eq!(s.language, Lang::En);
+    assert!(!s.dnd, "do not disturb starts off");
 }

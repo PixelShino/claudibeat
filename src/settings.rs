@@ -11,11 +11,13 @@ pub struct Settings {
     pub sound: bool,
     /// The interface language; English unless the person picks Russian.
     pub language: Lang,
+    /// Do not disturb: no toasts and no sound until switched off.
+    pub dnd: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { sound: true, language: Lang::En }
+        Settings { sound: true, language: Lang::En, dnd: false }
     }
 }
 

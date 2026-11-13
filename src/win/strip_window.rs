@@ -2,6 +2,7 @@
 
 use super::{Action, Surface, layered, surface_message, taskbar};
 use crate::render::Frame;
+use crate::render::flyout::Prefs;
 use crate::text::Lang;
 use windows::Win32::Foundation::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
@@ -100,9 +101,10 @@ const ID_AUTOSTART: usize = 3;
 const ID_QUIT: usize = 4;
 const ID_LANG_EN: usize = 10;
 const ID_LANG_RU: usize = 11;
+const ID_DND: usize = 5;
 
 /// The right-click menu at the pointer. Returns the chosen action.
-pub fn menu(owner: HWND, anything_pending: bool, sound: bool, autostart: bool, lang: Lang) -> Option<Action> {
+pub fn menu(owner: HWND, anything_pending: bool, prefs: Prefs, lang: Lang) -> Option<Action> {
     let check = |on: bool| if on { MF_CHECKED } else { MF_UNCHECKED };
     let words = lang.words();
     let item = |menu: HMENU, flags: MENU_ITEM_FLAGS, id: usize, text: &str| {
@@ -118,8 +120,9 @@ pub fn menu(owner: HWND, anything_pending: bool, sound: bool, autostart: bool, l
         let seen = if anything_pending { MF_ENABLED } else { MF_GRAYED };
         item(menu, MF_STRING | seen, ID_SEEN, words.menu_seen);
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-        item(menu, MF_STRING | check(sound), ID_SOUND, words.menu_sound);
-        item(menu, MF_STRING | check(autostart), ID_AUTOSTART, words.menu_autostart);
+        item(menu, MF_STRING | check(prefs.dnd), ID_DND, words.dnd);
+        item(menu, MF_STRING | check(prefs.sound), ID_SOUND, words.menu_sound);
+        item(menu, MF_STRING | check(prefs.autostart), ID_AUTOSTART, words.menu_autostart);
         // The submenu belongs to the menu from here on and is destroyed with it.
         item(menu, MF_POPUP, languages.0 as usize, words.menu_language);
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
@@ -141,6 +144,7 @@ pub fn menu(owner: HWND, anything_pending: bool, sound: bool, autostart: bool, l
         match id {
             ID_SEEN => Some(Action::MarkAllSeen),
             ID_SOUND => Some(Action::ToggleSound),
+            ID_DND => Some(Action::ToggleDnd),
             ID_AUTOSTART => Some(Action::ToggleAutostart),
             ID_QUIT => Some(Action::Quit),
             ID_LANG_EN => Some(Action::SetLanguage(Lang::En)),
