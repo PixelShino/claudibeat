@@ -2,8 +2,10 @@
 //! premultiplied BGRA WIC bitmap. The same pixels go to a PNG (`--render`)
 //! or to a layered window on the taskbar.
 
+pub mod flyout;
 pub mod icons;
 pub mod strip;
+pub mod toast;
 
 use std::cell::Cell;
 use std::path::Path;
@@ -350,6 +352,48 @@ impl Painter<'_> {
         if w > 0.0 {
             self.fill_round(Rect { w: w.max(rect.h), ..rect }, radius, color);
         }
+    }
+
+    /// Everything drawn inside `f` is shifted by (`dx`, `dy`): lets a window's
+    /// layout be drawn into a larger scene for `--render`.
+    pub fn translate(&self, dx: f32, dy: f32, f: impl FnOnce(&Self)) {
+        use windows::Foundation::Numerics::Matrix3x2;
+        let mut before = Matrix3x2::default();
+        // SAFETY: transform get/set paired around `f`, inside BeginDraw/EndDraw.
+        unsafe {
+            self.rt.GetTransform(&mut before);
+            let mut moved = before;
+            moved.M31 += dx;
+            moved.M32 += dy;
+            self.rt.SetTransform(&moved);
+        }
+        f(self);
+        // SAFETY: restores the transform saved above.
+        unsafe { self.rt.SetTransform(&before) };
+    }
+
+    /// Everything drawn inside `f` is clipped to `rect`.
+    pub fn clip(&self, rect: Rect, f: impl FnOnce(&Self)) {
+        // SAFETY: push and pop are paired around `f`, inside BeginDraw/EndDraw.
+        unsafe { self.rt.PushAxisAlignedClip(&rect.d2d(), D2D1_ANTIALIAS_MODE_ALIASED) };
+        f(self);
+        // SAFETY: pops the clip pushed above.
+        unsafe { self.rt.PopAxisAlignedClip() };
+    }
+
+    /// A soft drop shadow and a hairline edge under a floating card, after
+    /// Windows 11 flyouts: `0 8px 28px rgba(0,0,0,.16)` plus a 1 px ring.
+    pub fn card_shadow(&self, card: Rect, radius: f32) {
+        const LAYERS: usize = 14;
+        const SPREAD: f32 = 28.0;
+        const DROP: f32 = 8.0;
+        for i in 0..LAYERS {
+            let grow = SPREAD * (1.0 - i as f32 / LAYERS as f32);
+            let r = Rect::new(card.x - grow / 2.0, card.y + DROP - grow / 2.0, card.w + grow, card.h + grow);
+            self.fill_round(r, radius + grow / 2.0, Color(0x0300_0000));
+        }
+        let ring = Rect::new(card.x - 0.5, card.y - 0.5, card.w + 1.0, card.h + 1.0);
+        self.stroke_round_rect(ring, radius + 0.5, 1.0, Color(0x1400_0000));
     }
 
     /// Lay out `text` on one line (ellipsis past `max_w`) or wrapped (`wrap`).

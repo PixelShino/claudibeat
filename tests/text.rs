@@ -87,3 +87,11 @@ fn limit_tip() {
 fn live_tz_print() {
     println!("TZ {}", local_tz_offset_min());
 }
+
+#[test]
+fn toast_titles() {
+    assert_eq!(title_done_batch(3), "3 сессии закончили");
+    assert_eq!(title_done_batch(21), "21 сессия закончила");
+    assert_eq!(title_more_waiting(2), "Ещё 2 сессии ждут ответа");
+    assert_eq!(title_more_waiting(5), "Ещё 5 сессий ждут ответа");
+}

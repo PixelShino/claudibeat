@@ -34,6 +34,16 @@ pub fn tip_done(n: usize) -> String {
     format!("{} {verb}, не {open}", sessions(n))
 }
 
+/// Title of one toast for several sessions that finished together.
+pub fn title_done_batch(n: usize) -> String {
+    format!("{} {}", sessions(n), plural(n, "закончила", "закончили", "закончили"))
+}
+
+/// Title of the summary toast once every place holds someone waiting.
+pub fn title_more_waiting(n: usize) -> String {
+    format!("Ещё {}", tip_waiting(n))
+}
+
 pub fn tip_working(n: usize) -> String {
     format!("{} в работе", sessions(n))
 }
