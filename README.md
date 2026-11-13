@@ -12,9 +12,9 @@
 
 Нужен Rust с набором `stable-x86_64-pc-windows-gnu`.
 
-```
+```powershell
 cargo build --release
-targetelease\claudibeat.exe
+.	argetelease\claudibeat.exe
 ```
 
 Полоса встаёт в левый край панели задач основного монитора. Второй экземпляр не запускается.
