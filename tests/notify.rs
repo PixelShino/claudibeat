@@ -1,7 +1,7 @@
 use claudibeat::merge::Row;
 use claudibeat::model::SessionState;
 use claudibeat::notify::{Notifier, ToastEvent, ToastKind, ToastStack};
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 const T: i64 = 1_000_000;
 
@@ -134,8 +134,29 @@ fn stack_forgets_sessions_seen_elsewhere() {
     let mut s = ToastStack::default();
     s.push(ev(ToastKind::Waiting, "w1", 1));
     s.push(ev(ToastKind::Done, "d1", 2));
-    let needing: HashSet<String> = ["w1".to_string()].into();
+    let needing: HashMap<String, SessionState> = [("w1".to_string(), SessionState::Waiting)].into();
     s.retain_needing(&needing);
     assert_eq!(s.items.len(), 1);
     assert_eq!(s.items[0].keys, ["w1"]);
+}
+
+#[test]
+fn a_waiting_toast_goes_once_its_session_is_done() {
+    let mut s = ToastStack::default();
+    s.push(ev(ToastKind::Waiting, "a", 1));
+    s.push(ev(ToastKind::Done, "a", 2));
+    let needing: HashMap<String, SessionState> = [("a".to_string(), SessionState::Done)].into();
+    s.retain_needing(&needing);
+    assert_eq!(s.items.len(), 1);
+    assert_eq!(s.items[0].kind, ToastKind::Done);
+}
+
+#[test]
+fn a_batch_counts_only_sessions_still_unopened() {
+    let mut s = ToastStack::default();
+    s.push(ToastEvent { kind: ToastKind::DoneBatch, keys: vec!["d1".into(), "d2".into(), "d3".into()], at: 1, count: 3 });
+    let needing: HashMap<String, SessionState> = [("d1".to_string(), SessionState::Done), ("d3".to_string(), SessionState::Done)].into();
+    s.retain_needing(&needing);
+    assert_eq!(s.items[0].keys, ["d1", "d3"]);
+    assert_eq!(s.items[0].count, 2);
 }

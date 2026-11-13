@@ -21,7 +21,8 @@ use crate::win::popup::{self, Popup};
 use crate::win::strip_window::{self, StripWindow};
 use crate::win::{Action, Input, Surface, WM_FOLDER_CHANGED, WM_INPUT_READY, cursor_over, set_hand, shell, taskbar};
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use crate::model::SessionState;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTOPRIMARY, MONITORINFO, MonitorFromWindow};
@@ -85,7 +86,17 @@ fn geometry() -> Option<Geo> {
     unsafe {
         GetWindowRect(bar, &mut rect).ok()?;
         let mut mi = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..Default::default() };
-        let work_top = if GetMonitorInfoW(MonitorFromWindow(bar, MONITOR_DEFAULTTOPRIMARY), &mut mi).as_bool() { mi.rcWork.top } else { 0 };
+        let mut work_top = 0;
+        if GetMonitorInfoW(MonitorFromWindow(bar, MONITOR_DEFAULTTOPRIMARY), &mut mi).as_bool() {
+            work_top = mi.rcWork.top;
+            // An auto-hidden taskbar slides below the screen; cards stay
+            // where they sit when it is shown, so nothing jumps or overlaps.
+            let h = rect.bottom - rect.top;
+            if rect.top > mi.rcMonitor.bottom - h {
+                rect.top = mi.rcMonitor.bottom - h;
+                rect.bottom = mi.rcMonitor.bottom;
+            }
+        }
         Some(Geo { rect, scale: taskbar::scale(bar), work_top })
     }
 }
@@ -115,6 +126,16 @@ struct ToastHit {
     index: usize,
     card: Rect,
     close: Rect,
+}
+
+/// What a toast frame shows; an identical one is not painted again.
+#[derive(PartialEq)]
+struct ToastKey {
+    models: Vec<ToastModel>,
+    hover_close: Option<usize>,
+    left: i32,
+    top: i32,
+    scale: u32,
 }
 
 struct ToastGeo {
@@ -158,6 +179,7 @@ pub struct App {
     toast_hovered: bool,
     toast_hover_close: Option<usize>,
     toast_timer: bool,
+    toast_key: Option<ToastKey>,
 }
 
 impl App {
@@ -194,6 +216,7 @@ impl App {
             toast_hovered: false,
             toast_hover_close: None,
             toast_timer: false,
+            toast_key: None,
         })
     }
 
@@ -219,7 +242,7 @@ impl App {
         self.busy = shell::is_busy();
 
         let events = self.notifier.observe(&self.rows, now);
-        let needing: HashSet<String> = self.rows.iter().filter(|r| r.needs_you).map(|r| r.key.clone()).collect();
+        let needing: HashMap<String, SessionState> = self.rows.iter().filter(|r| r.needs_you).map(|r| (r.key.clone(), r.state)).collect();
         self.stack.retain_needing(&needing);
         if let Some(first) = events.first() {
             let chime = if events.iter().any(|e| e.kind.is_waiting()) { ToastKind::Waiting } else { first.kind };
@@ -356,6 +379,7 @@ impl App {
         let (Some(geo), false, false, false) = (geo, self.stack.items.is_empty(), self.flyout.visible(), self.busy) else {
             self.toasts.hide();
             self.toast_geo = None;
+            self.toast_key = None;
             // A hidden window may never hear the pointer leave.
             self.toast_hovered = false;
             self.toast_hover_close = None;
@@ -368,6 +392,10 @@ impl App {
         let mut layouts = Vec::new();
         let _ = self.renderer.render(1.0, 1.0, 1.0, TRANSPARENT, |p| layouts = models.iter().map(|m| layout_toast(m, p)).collect());
         if layouts.len() != models.len() {
+            return;
+        }
+        let key = ToastKey { models: models.clone(), hover_close: self.toast_hover_close, left: geo.rect.left, top: geo.rect.top, scale: geo.scale.to_bits() };
+        if self.toasts.visible() && self.toast_key.as_ref() == Some(&key) {
             return;
         }
         // Oldest on top, newest closest to the strip.
@@ -396,6 +424,7 @@ impl App {
             .collect();
         let _ = self.toasts.show(&frame, geo.rect.left, geo.rect.top - frame.height as i32);
         self.toast_geo = Some(ToastGeo { hits, scale: geo.scale });
+        self.toast_key = Some(key);
         self.sync_toast_timer();
     }
 
@@ -471,8 +500,10 @@ impl App {
         if self.flyout.visible() {
             self.close_flyout();
         }
+        if !shell::open_url(&url) {
+            return; // nothing opened, so nothing is marked seen
+        }
         let now = now_ms();
-        shell::open_url(&url);
         let _ = self.store.write_ack(key, now);
         self.notifier.opened(key, now);
         self.refresh();
@@ -551,7 +582,7 @@ impl App {
                 (None, false) => self.close_flyout(),
                 (None, true) => {}
             },
-            Input::Wheel(Surface::Flyout, delta) => {
+            Input::Wheel(Surface::Flyout, delta) if self.flyout.visible() => {
                 let max = self.fly_geo.as_ref().map_or(0.0, |g| g.layout.scroll_max);
                 let next = (self.scroll - delta as f32 / 120.0 * SCROLL_STEP).clamp(0.0, max);
                 if next != self.scroll {
@@ -667,7 +698,7 @@ impl App {
             }
             T_TIP => {
                 self.kill(T_TIP);
-                if let (Some(item), false) = (self.hover, self.flyout.visible()) {
+                if let (Some(item), false, false) = (self.hover, self.flyout.visible(), self.toasts.visible()) {
                     self.show_tip(item);
                 }
             }
@@ -677,10 +708,13 @@ impl App {
     }
 
     fn tick_toasts(&mut self) {
-        let close = self.toast_hover_close;
+        let (close, hover) = (self.toast_hover_close, self.hover);
         self.sync_pointer();
         if close != self.toast_hover_close {
             self.draw_toasts();
+        }
+        if hover != self.hover {
+            self.draw_strip();
         }
         if !self.toasts.visible() || self.toast_hovered {
             return;
@@ -739,27 +773,36 @@ unsafe extern "system" fn host_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
     LRESULT(0)
 }
 
-/// Watch the status-band folder from a helper thread and nudge the host on
-/// every change. The 2 s timer covers a folder that does not exist yet.
+/// Watch the status-band folder, `sessions/` and `acks/` from a helper
+/// thread and nudge the host on every change. Not the whole tree: `diag/`
+/// and the like change every few seconds and say nothing about sessions.
+/// The 2 s timer covers folders that do not exist yet.
 fn watch(dir: PathBuf, host: HWND) {
     use windows::Win32::Storage::FileSystem::*;
-    use windows::Win32::System::Threading::{INFINITE, WaitForSingleObject};
+    use windows::Win32::System::Threading::{INFINITE, WaitForMultipleObjects};
     let host = host.0 as isize;
     let _ = std::thread::Builder::new().name("claudibeat-watch".into()).spawn(move || {
-        let path = windows::core::HSTRING::from(dir.as_os_str());
+        let filter = FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE;
         loop {
-            // SAFETY: a change notification handle used and closed on this thread.
+            // SAFETY: change notification handles opened, waited on and closed on this thread.
             unsafe {
-                if let Ok(h) = FindFirstChangeNotificationW(&path, true, FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE) {
-                    while WaitForSingleObject(h, INFINITE) == WAIT_OBJECT_0 {
-                        if PostMessageW(HWND(host as *mut _), WM_FOLDER_CHANGED, WPARAM(0), LPARAM(0)).is_err() {
+                let handles: Vec<HANDLE> = [dir.clone(), dir.join("sessions"), dir.join("acks")]
+                    .iter()
+                    .filter_map(|d| FindFirstChangeNotificationW(&windows::core::HSTRING::from(d.as_os_str()), false, filter).ok())
+                    .collect();
+                let mut alive = !handles.is_empty();
+                while alive {
+                    let which = WaitForMultipleObjects(&handles, false, INFINITE).0.wrapping_sub(WAIT_OBJECT_0.0) as usize;
+                    let Some(&h) = handles.get(which) else { break };
+                    if PostMessageW(HWND(host as *mut _), WM_FOLDER_CHANGED, WPARAM(0), LPARAM(0)).is_err() {
+                        for &h in &handles {
                             let _ = FindCloseChangeNotification(h);
-                            return;
                         }
-                        if FindNextChangeNotification(h).is_err() {
-                            break;
-                        }
+                        return;
                     }
+                    alive = FindNextChangeNotification(h).is_ok();
+                }
+                for &h in &handles {
                     let _ = FindCloseChangeNotification(h);
                 }
             }

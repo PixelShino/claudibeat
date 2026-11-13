@@ -61,7 +61,11 @@ impl Store {
     }
 
     /// Tells the status-band mod that a tray speaks for it, so it stays silent.
+    /// Without the mod's folder there is nobody to tell, and nothing is created.
     pub fn write_tray(&self, now_ms: i64) -> io::Result<()> {
+        if !self.dir.is_dir() {
+            return Ok(());
+        }
         write_atomic(&self.dir.join("tray.json"), &format!(r#"{{"v":1,"at":{now_ms}}}"#))
     }
 
@@ -86,15 +90,20 @@ impl Store {
     }
 
     fn load<T: DeserializeOwned + Versioned>(&mut self, path: &Path) -> Option<T> {
-        let fresh = fs::read_to_string(path).ok();
-        if let Some(text) = fresh.as_deref() {
-            if let Some(value) = parse::<T>(text) {
-                self.last_good.insert(path.to_path_buf(), text.to_owned());
-                return Some(value);
+        match fs::read_to_string(path) {
+            Ok(text) => {
+                if let Some(value) = parse::<T>(&text) {
+                    self.last_good.insert(path.to_path_buf(), text);
+                    return Some(value);
+                }
             }
-        } else {
-            self.last_good.remove(path);
-            return None;
+            // Gone means gone; anything else (a sharing violation, an
+            // antivirus lock) is a moment, and the last good value stands.
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                self.last_good.remove(path);
+                return None;
+            }
+            Err(_) => {}
         }
         self.last_good.get(path).and_then(|text| parse::<T>(text))
     }

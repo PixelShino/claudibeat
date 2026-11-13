@@ -40,6 +40,11 @@ pub fn limit_views(account: Option<&AccountFile>, now: i64) -> Vec<LimitView> {
                 "seven_day" => LimitWindow::Week,
                 _ => return None,
             };
+            // The mod rewrites the file only when figures change, so a window
+            // past its reset time still carries the old percent: it is empty.
+            if l.resets_at.is_some_and(|at| at <= now) {
+                return Some(LimitView { window, used: 0, remaining: 100, resets_at: None });
+            }
             let used = l.percent.round().clamp(0.0, 100.0) as u8;
             Some(LimitView { window, used, remaining: 100 - used, resets_at: l.resets_at })
         })

@@ -160,3 +160,19 @@ fn every_word_has_both_languages() {
     }
     assert_ne!(EN.words().flyout_title, RU.words().flyout_title);
 }
+
+#[test]
+fn a_window_past_its_reset_reads_empty() {
+    let account = AccountFile {
+        v: 1,
+        updated_at: NOW - 3_600_000,
+        limits: vec![
+            Limit { window: "five_hour".into(), percent: 90.0, resets_at: Some(NOW - 60_000) },
+            Limit { window: "seven_day".into(), percent: 40.0, resets_at: Some(NOW + 86_400_000) },
+        ],
+    };
+    let views = limit_views(Some(&account), NOW);
+    let five = views.iter().find(|v| v.window == LimitWindow::FiveHour).unwrap();
+    assert_eq!((five.used, five.remaining, five.resets_at), (0, 100, None), "the window has started over");
+    assert_eq!(strip_limit(&views).unwrap().window, LimitWindow::Week, "the strip shows the live window");
+}

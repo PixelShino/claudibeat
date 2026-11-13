@@ -7,7 +7,7 @@
 
 use crate::merge::Row;
 use crate::model::SessionState;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 pub const THROTTLE_MS: i64 = 10_000;
 pub const OPENED_QUIET_MS: i64 = 5_000;
@@ -59,6 +59,8 @@ impl Notifier {
     }
 
     pub fn observe(&mut self, rows: &[Row], now: i64) -> Vec<ToastEvent> {
+        self.last_fired.retain(|_, t| now - *t < THROTTLE_MS);
+        self.opened.retain(|_, t| now - *t < OPENED_QUIET_MS);
         let current: HashMap<String, SessionState> =
             rows.iter().filter(|r| r.needs_you).map(|r| (r.key.clone(), r.state)).collect();
         let Some(prev) = self.prev.replace(current.clone()) else { return Vec::new() };
@@ -139,11 +141,15 @@ impl ToastStack {
         }
     }
 
-    /// Drop toasts whose sessions no longer need the person (opened elsewhere).
-    pub fn retain_needing(&mut self, needing: &HashSet<String>) {
+    /// Keep each toast only for sessions still in the state it announces:
+    /// one opened elsewhere goes, and a "waiting" toast goes once the session
+    /// has moved on to "done". `needing` maps the sessions that still need the
+    /// person to their state.
+    pub fn retain_needing(&mut self, needing: &HashMap<String, SessionState>) {
         for e in &mut self.items {
-            e.keys.retain(|k| needing.contains(k));
-            if e.kind == ToastKind::MoreWaiting {
+            let state = if e.kind.is_waiting() { SessionState::Waiting } else { SessionState::Done };
+            e.keys.retain(|k| needing.get(k) == Some(&state));
+            if matches!(e.kind, ToastKind::MoreWaiting | ToastKind::DoneBatch) {
                 e.count = e.keys.len();
             }
         }

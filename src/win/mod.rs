@@ -71,6 +71,9 @@ thread_local! {
     static QUEUE: RefCell<VecDeque<Input>> = const { RefCell::new(VecDeque::new()) };
     static HOST: Cell<HWND> = const { Cell::new(HWND(std::ptr::null_mut())) };
     static HAND: Cell<[bool; 4]> = const { Cell::new([false; 4]) };
+    /// A click needs its press on the same window: releasing a drag from a
+    /// taskbar button over the strip is not a click.
+    static PRESSED: Cell<[bool; 4]> = const { Cell::new([false; 4]) };
 }
 
 pub fn set_host(hwnd: HWND) {
@@ -113,12 +116,26 @@ pub(crate) fn surface_message(surface: Surface, hwnd: HWND, msg: u32, wp: WPARAM
             Some(LRESULT(0))
         }
         WM_MOUSELEAVE => {
+            let mut p = PRESSED.get();
+            p[surface.index()] = false;
+            PRESSED.set(p);
             emit(Input::Leave(surface));
             Some(LRESULT(0))
         }
+        WM_LBUTTONDOWN => {
+            let mut p = PRESSED.get();
+            p[surface.index()] = true;
+            PRESSED.set(p);
+            Some(LRESULT(0))
+        }
         WM_LBUTTONUP => {
-            let (x, y) = point(lp);
-            emit(Input::Click(surface, x, y));
+            let mut p = PRESSED.get();
+            let was = std::mem::replace(&mut p[surface.index()], false);
+            PRESSED.set(p);
+            if was {
+                let (x, y) = point(lp);
+                emit(Input::Click(surface, x, y));
+            }
             Some(LRESULT(0))
         }
         WM_RBUTTONUP => {
@@ -164,9 +181,4 @@ pub fn cursor_over(hwnd: HWND) -> Option<(i32, i32)> {
         let _ = windows::Win32::Graphics::Gdi::ScreenToClient(hwnd, &mut pt);
         Some((pt.x, pt.y))
     }
-}
-
-/// Physical pixels to DIPs.
-pub fn dip(px: i32, scale: f32) -> f32 {
-    px as f32 / scale
 }

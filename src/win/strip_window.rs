@@ -128,11 +128,16 @@ pub fn menu(owner: HWND, anything_pending: bool, sound: bool, autostart: bool, l
         let _ = GetCursorPos(&mut pt);
         // The owner must be foreground, or the menu will not close when the
         // person clicks elsewhere (the documented TrackPopupMenu caveat).
+        // Remember whose window had focus, to give it back afterwards.
+        let before = GetForegroundWindow();
         let _ = SetForegroundWindow(owner);
         let flags = TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_BOTTOMALIGN | TPM_LEFTALIGN | TPM_NONOTIFY;
         let id = TrackPopupMenu(menu, flags, pt.x, pt.y, 0, owner, None).0 as usize;
         let _ = PostMessageW(owner, WM_NULL, WPARAM(0), LPARAM(0));
         let _ = DestroyMenu(menu);
+        if GetForegroundWindow() == owner && !before.is_invalid() {
+            let _ = SetForegroundWindow(before);
+        }
         match id {
             ID_SEEN => Some(Action::MarkAllSeen),
             ID_SOUND => Some(Action::ToggleSound),

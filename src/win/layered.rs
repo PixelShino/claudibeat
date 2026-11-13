@@ -14,8 +14,12 @@ use windows::Win32::UI::WindowsAndMessaging::{ULW_ALPHA, UpdateLayeredWindow};
 /// With `catch_all`, transparent pixels still take the mouse; without it,
 /// clicks fall through them (popups' shadow margins).
 pub fn present(hwnd: HWND, frame: &Frame, pos: Option<POINT>, catch_all: bool) -> windows::core::Result<()> {
+    if frame.width == 0 || frame.height == 0 || frame.pixels.len() != frame.width as usize * frame.height as usize {
+        return Err(windows::core::Error::from(windows::Win32::Foundation::E_INVALIDARG));
+    }
     // SAFETY: GDI objects are created, selected, used and released in order;
-    // the DIB's bits are written within its size.
+    // the DIB holds width x height pixels, which the check above makes equal
+    // to the frame's own pixel count.
     unsafe {
         let screen = GetDC(None);
         let memory = CreateCompatibleDC(screen);

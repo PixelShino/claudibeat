@@ -84,3 +84,37 @@ fn writes_tray() {
     Store::new(dir.clone()).write_tray(7).unwrap();
     assert_eq!(fs::read_to_string(dir.join("tray.json")).unwrap(), r#"{"v":1,"at":7}"#);
 }
+
+#[test]
+fn a_file_that_cannot_be_read_right_now_keeps_its_value() {
+    // A sharing violation or an antivirus lock is not a deletion: dropping
+    // the session for one tick would fire a false toast.
+    let dir = scratch("read_error_keeps");
+    let mut store = Store::new(dir.clone());
+    let before = store.read();
+    let busy = dir.join("sessions").join("local_aaa.json");
+    fs::remove_file(&busy).unwrap();
+    fs::create_dir(&busy).unwrap();
+    fs::remove_file(dir.join("index.json")).unwrap();
+    fs::create_dir(dir.join("index.json")).unwrap();
+    let after = store.read();
+    assert_eq!(after.index.len(), before.index.len());
+    assert_eq!(after.files.len(), before.files.len());
+}
+
+#[test]
+fn a_deleted_session_file_is_forgotten() {
+    let dir = scratch("deleted_forgotten");
+    let mut store = Store::new(dir.clone());
+    let before = store.read().files.len();
+    fs::remove_file(dir.join("sessions").join("local_aaa.json")).unwrap();
+    assert_eq!(store.read().files.len(), before - 1);
+}
+
+#[test]
+fn tray_is_not_written_without_the_mod() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("no_mod_here");
+    let _ = fs::remove_dir_all(&dir);
+    assert!(Store::new(dir.clone()).write_tray(1).is_ok());
+    assert!(!dir.exists(), "claudibeat must not create the mod's folder");
+}
