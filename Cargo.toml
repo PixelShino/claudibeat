@@ -2,6 +2,13 @@
 name = "claudibeat"
 version = "0.1.0"
 edition = "2024"
+description = "Claude Desktop sessions, memory and plan limit in the left corner of the Windows 11 taskbar"
+authors = ["Dmitry Goldobin", "Claude (Anthropic)"]
+license = "MIT"
+repository = "https://github.com/PixelShino/claudibeat"
+readme = "README.md"
+keywords = ["claude", "taskbar", "windows", "widget"]
+categories = ["gui"]
 
 [dependencies]
 serde = { version = "1.0.229", features = ["derive"] }
@@ -10,3 +17,10 @@ windows = { version = "0.58", features = ["Foundation_Numerics", "Win32_System_C
 
 [build-dependencies]
 embed-manifest = "1.5.1"
+
+[profile.release]
+# A taskbar widget should be small: one optimised unit, no symbols.
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
