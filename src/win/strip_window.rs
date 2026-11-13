@@ -2,9 +2,10 @@
 
 use super::{Action, Surface, layered, surface_message, taskbar};
 use crate::render::Frame;
+use crate::text::Lang;
 use windows::Win32::Foundation::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::core::{PCWSTR, w};
+use windows::core::{HSTRING, PCWSTR, w};
 
 pub const CLASS: PCWSTR = w!("claudibeat.strip");
 
@@ -97,20 +98,32 @@ const ID_SEEN: usize = 1;
 const ID_SOUND: usize = 2;
 const ID_AUTOSTART: usize = 3;
 const ID_QUIT: usize = 4;
+const ID_LANG_EN: usize = 10;
+const ID_LANG_RU: usize = 11;
 
 /// The right-click menu at the pointer. Returns the chosen action.
-pub fn menu(owner: HWND, anything_pending: bool, sound: bool, autostart: bool) -> Option<Action> {
+pub fn menu(owner: HWND, anything_pending: bool, sound: bool, autostart: bool, lang: Lang) -> Option<Action> {
     let check = |on: bool| if on { MF_CHECKED } else { MF_UNCHECKED };
-    // SAFETY: a menu created, shown modally and destroyed here.
+    let words = lang.words();
+    let item = |menu: HMENU, flags: MENU_ITEM_FLAGS, id: usize, text: &str| {
+        // SAFETY: the menu copies the text before the HSTRING is dropped.
+        let _ = unsafe { AppendMenuW(menu, flags, id, &HSTRING::from(text)) };
+    };
+    // SAFETY: menus created, shown modally and destroyed here.
     unsafe {
         let menu = CreatePopupMenu().ok()?;
+        let languages = CreatePopupMenu().ok()?;
+        item(languages, MF_STRING | check(lang == Lang::En), ID_LANG_EN, Lang::En.name());
+        item(languages, MF_STRING | check(lang == Lang::Ru), ID_LANG_RU, Lang::Ru.name());
         let seen = if anything_pending { MF_ENABLED } else { MF_GRAYED };
-        let _ = AppendMenuW(menu, MF_STRING | seen, ID_SEEN, w!("Отметить всё просмотренным"));
+        item(menu, MF_STRING | seen, ID_SEEN, words.menu_seen);
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-        let _ = AppendMenuW(menu, MF_STRING | check(sound), ID_SOUND, w!("Звук уведомлений"));
-        let _ = AppendMenuW(menu, MF_STRING | check(autostart), ID_AUTOSTART, w!("Запускать вместе с Windows"));
+        item(menu, MF_STRING | check(sound), ID_SOUND, words.menu_sound);
+        item(menu, MF_STRING | check(autostart), ID_AUTOSTART, words.menu_autostart);
+        // The submenu belongs to the menu from here on and is destroyed with it.
+        item(menu, MF_POPUP, languages.0 as usize, words.menu_language);
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-        let _ = AppendMenuW(menu, MF_STRING, ID_QUIT, w!("Выход"));
+        item(menu, MF_STRING, ID_QUIT, words.menu_quit);
         let mut pt = POINT::default();
         let _ = GetCursorPos(&mut pt);
         // The owner must be foreground, or the menu will not close when the
@@ -125,6 +138,8 @@ pub fn menu(owner: HWND, anything_pending: bool, sound: bool, autostart: bool) -
             ID_SOUND => Some(Action::ToggleSound),
             ID_AUTOSTART => Some(Action::ToggleAutostart),
             ID_QUIT => Some(Action::Quit),
+            ID_LANG_EN => Some(Action::SetLanguage(Lang::En)),
+            ID_LANG_RU => Some(Action::SetLanguage(Lang::Ru)),
             _ => None,
         }
     }

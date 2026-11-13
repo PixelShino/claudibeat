@@ -5,7 +5,7 @@ use super::icons::{Icon, icon};
 use super::{Color, HOVER, INK, MUTED, Painter, Rect, SURFACE, TextStyle, Weight};
 use crate::merge::{Row, open_target};
 use crate::notify::{ToastEvent, ToastKind};
-use crate::text::{ago, title_done_batch, title_more_waiting};
+use crate::text::{Lang, ago, quote, title_done_batch, title_more_waiting};
 
 pub const TOAST_W: f32 = 340.0;
 /// Room around a toast card for its shadow.
@@ -36,7 +36,8 @@ pub struct ToastModel {
 }
 
 /// The words of a toast for `ev`, looked up in the current rows.
-pub fn toast_model(ev: &ToastEvent, rows: &[Row], now: i64) -> ToastModel {
+pub fn toast_model(ev: &ToastEvent, rows: &[Row], now: i64, lang: Lang) -> ToastModel {
+    let w = lang.words();
     let find = |k: &str| rows.iter().find(|r| r.key == k);
     let first = ev.keys.first().and_then(|k| find(k));
     let titles = || {
@@ -46,16 +47,16 @@ pub fn toast_model(ev: &ToastEvent, rows: &[Row], now: i64) -> ToastModel {
     let opens = first.and_then(open_target).is_some();
     let (label, title, sub, action) = match ev.kind {
         ToastKind::Waiting => (
-            "Ждёт ответа",
+            w.waiting_one,
             first.map_or_else(String::new, |r| r.title.clone()),
-            first.and_then(|r| r.ask.as_deref()).map(|a| format!("«{a}»")),
-            opens.then_some("Открыть чат"),
+            first.and_then(|r| r.ask.as_deref()).map(|a| quote(lang, a)),
+            opens.then_some(w.open_chat),
         ),
-        ToastKind::Done => ("Готово", first.map_or_else(String::new, |r| r.title.clone()), None, opens.then_some("Открыть чат")),
-        ToastKind::DoneBatch => ("Готово", title_done_batch(ev.count), titles(), Some("Показать все")),
-        ToastKind::MoreWaiting => ("Ждут ответа", title_more_waiting(ev.count), titles(), Some("Показать все")),
+        ToastKind::Done => (w.done, first.map_or_else(String::new, |r| r.title.clone()), None, opens.then_some(w.open_chat)),
+        ToastKind::DoneBatch => (w.done, title_done_batch(lang, ev.count), titles(), Some(w.show_all)),
+        ToastKind::MoreWaiting => (w.waiting_many, title_more_waiting(lang, ev.count), titles(), Some(w.show_all)),
     };
-    ToastModel { kind: ev.kind, label: label.to_owned(), title, sub, action, age: ago(now - ev.at) }
+    ToastModel { kind: ev.kind, label: label.to_owned(), title, sub, action, age: ago(lang, now - ev.at) }
 }
 
 #[derive(Clone, Debug, PartialEq)]

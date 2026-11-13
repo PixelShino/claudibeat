@@ -1,10 +1,106 @@
-//! Every word claudibeat shows, in Russian, with the right plural forms.
+//! Every word claudibeat shows, in English (the default) and Russian, with
+//! the right plural forms, decimal marks, quotes and weekday names.
 
 use crate::limits::{LimitView, LimitWindow};
+use serde::{Deserialize, Serialize};
 
 const GIB: f64 = (1u64 << 30) as f64;
 const DAY_MS: i64 = 86_400_000;
-const WEEKDAYS: [&str; 7] = ["чт", "пт", "сб", "вс", "пн", "вт", "ср"]; // 1970-01-01 was a Thursday
+// 1970-01-01 was a Thursday.
+const WEEKDAYS_EN: [&str; 7] = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
+const WEEKDAYS_RU: [&str; 7] = ["чт", "пт", "сб", "вс", "пн", "вт", "ср"];
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Lang {
+    #[default]
+    En,
+    Ru,
+}
+
+/// The fixed words of one language.
+pub struct Words {
+    pub flyout_title: &'static str,
+    /// Group headings: waiting, done, working.
+    pub groups: [&'static str; 3],
+    /// A waiting session's label when it asked nothing in words.
+    pub waiting_one: &'static str,
+    pub waiting_many: &'static str,
+    pub done: &'static str,
+    pub empty: &'static str,
+    pub memory: &'static str,
+    /// Memory rows: name and a quieter note after it.
+    pub mem_rows: [(&'static str, &'static str); 4],
+    pub limits: &'static str,
+    pub open_chat: &'static str,
+    pub show_all: &'static str,
+    pub no_folder: &'static str,
+    pub limit_unknown: &'static str,
+    pub menu_seen: &'static str,
+    pub menu_sound: &'static str,
+    pub menu_autostart: &'static str,
+    pub menu_language: &'static str,
+    pub menu_quit: &'static str,
+}
+
+const EN: Words = Words {
+    flyout_title: "Claude sessions",
+    groups: ["Waiting for you", "Done, not opened", "Working"],
+    waiting_one: "Waiting for you",
+    waiting_many: "Waiting for you",
+    done: "Done",
+    empty: "Nobody is waiting or working",
+    memory: "Memory",
+    mem_rows: [("Claude", "with MCP and terminals"), ("Chrome", ""), ("Python", "outside Claude"), ("Other and system", "")],
+    limits: "Limits",
+    open_chat: "Open chat",
+    show_all: "Show all",
+    no_folder: "no folder",
+    limit_unknown: "Limit not known yet",
+    menu_seen: "Mark all as seen",
+    menu_sound: "Notification sound",
+    menu_autostart: "Start with Windows",
+    menu_language: "Language",
+    menu_quit: "Quit",
+};
+
+const RU: Words = Words {
+    flyout_title: "Сессии Claude",
+    groups: ["Ждут ответа", "Готово, не открыто", "В работе"],
+    waiting_one: "Ждёт ответа",
+    waiting_many: "Ждут ответа",
+    done: "Готово",
+    empty: "Никто не ждёт и не работает",
+    memory: "Память",
+    mem_rows: [("Claude", "с MCP и терминалами"), ("Chrome", ""), ("Python", "вне Claude"), ("Остальное и система", "")],
+    limits: "Лимиты",
+    open_chat: "Открыть чат",
+    show_all: "Показать все",
+    no_folder: "без папки",
+    limit_unknown: "Лимит пока неизвестен",
+    menu_seen: "Отметить всё просмотренным",
+    menu_sound: "Звук уведомлений",
+    menu_autostart: "Запускать вместе с Windows",
+    menu_language: "Язык",
+    menu_quit: "Выход",
+};
+
+impl Lang {
+    pub fn words(self) -> &'static Words {
+        match self {
+            Lang::En => &EN,
+            Lang::Ru => &RU,
+        }
+    }
+
+    /// The language's own name, as its menu item shows it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Lang::En => "English",
+            Lang::Ru => "Русский",
+        }
+    }
+}
 
 /// Russian plural: 1, 21, 101 → one; 2–4, 22–24 → few; the rest, 11–14 included → many.
 pub fn plural<'a>(n: usize, one: &'a str, few: &'a str, many: &'a str) -> &'a str {
@@ -20,74 +116,182 @@ pub fn plural<'a>(n: usize, one: &'a str, few: &'a str, many: &'a str) -> &'a st
     }
 }
 
-fn sessions(n: usize) -> String {
-    format!("{n} {}", plural(n, "сессия", "сессии", "сессий"))
-}
-
-pub fn tip_waiting(n: usize) -> String {
-    format!("{} {} ответа", sessions(n), plural(n, "ждёт", "ждут", "ждут"))
-}
-
-pub fn tip_done(n: usize) -> String {
-    let verb = plural(n, "закончила", "закончили", "закончили");
-    let open = plural(n, "открыта", "открыты", "открыты");
-    format!("{} {verb}, не {open}", sessions(n))
-}
-
-/// Title of one toast for several sessions that finished together.
-pub fn title_done_batch(n: usize) -> String {
-    format!("{} {}", sessions(n), plural(n, "закончила", "закончили", "закончили"))
-}
-
-/// Title of the summary toast once every place holds someone waiting.
-pub fn title_more_waiting(n: usize) -> String {
-    format!("Ещё {}", tip_waiting(n))
-}
-
-pub fn tip_working(n: usize) -> String {
-    format!("{} в работе", sessions(n))
-}
-
-/// Gigabytes with one decimal and a decimal comma: `24,2`.
-pub fn gb(bytes: u64) -> String {
-    format!("{:.1}", bytes as f64 / GIB).replace('.', ",")
-}
-
-pub fn tip_memory(used: u64, total: u64) -> String {
-    format!("Занято {} из {} ГБ", gb(used), gb(total))
-}
-
-/// How long a state has lasted: «сейчас», «7 мин», «3 ч», «2 дн».
-pub fn ago(ms: i64) -> String {
-    match ms.max(0) {
-        m if m < 60_000 => "сейчас".to_owned(),
-        m if m < 3_600_000 => format!("{} мин", m / 60_000),
-        m if m < DAY_MS => format!("{} ч", m / 3_600_000),
-        m => format!("{} дн", m / DAY_MS),
+fn sessions(lang: Lang, n: usize) -> String {
+    match lang {
+        Lang::En => format!("{n} {}", if n == 1 { "session" } else { "sessions" }),
+        Lang::Ru => format!("{n} {}", plural(n, "сессия", "сессии", "сессий")),
     }
 }
 
-/// «в 20:40» today, otherwise «вс 18:00».
-pub fn reset_text(at: i64, now: i64, tz_offset_min: i32) -> String {
+pub fn tip_waiting(lang: Lang, n: usize) -> String {
+    match lang {
+        Lang::En => format!("{} waiting for you", sessions(lang, n)),
+        Lang::Ru => format!("{} {} ответа", sessions(lang, n), plural(n, "ждёт", "ждут", "ждут")),
+    }
+}
+
+pub fn tip_done(lang: Lang, n: usize) -> String {
+    match lang {
+        Lang::En => format!("{} finished, not opened yet", sessions(lang, n)),
+        Lang::Ru => {
+            let verb = plural(n, "закончила", "закончили", "закончили");
+            let open = plural(n, "открыта", "открыты", "открыты");
+            format!("{} {verb}, не {open}", sessions(lang, n))
+        }
+    }
+}
+
+pub fn tip_working(lang: Lang, n: usize) -> String {
+    match lang {
+        Lang::En => format!("{} working", sessions(lang, n)),
+        Lang::Ru => format!("{} в работе", sessions(lang, n)),
+    }
+}
+
+/// Title of one toast for several sessions that finished together.
+pub fn title_done_batch(lang: Lang, n: usize) -> String {
+    match lang {
+        Lang::En => format!("{} finished", sessions(lang, n)),
+        Lang::Ru => format!("{} {}", sessions(lang, n), plural(n, "закончила", "закончили", "закончили")),
+    }
+}
+
+/// Title of the summary toast once every place holds someone waiting.
+pub fn title_more_waiting(lang: Lang, n: usize) -> String {
+    match lang {
+        Lang::En => format!("{n} more {} waiting for you", if n == 1 { "session" } else { "sessions" }),
+        Lang::Ru => format!("Ещё {}", tip_waiting(lang, n)),
+    }
+}
+
+/// Gigabytes with one decimal: `24.2`, or `24,2` in Russian.
+pub fn gb(lang: Lang, bytes: u64) -> String {
+    let s = format!("{:.1}", bytes as f64 / GIB);
+    match lang {
+        Lang::En => s,
+        Lang::Ru => s.replace('.', ","),
+    }
+}
+
+fn unit(lang: Lang) -> &'static str {
+    match lang {
+        Lang::En => "GB",
+        Lang::Ru => "ГБ",
+    }
+}
+
+/// One memory value with its unit: `6.2 GB`.
+pub fn gb_value(lang: Lang, bytes: u64) -> String {
+    format!("{} {}", gb(lang, bytes), unit(lang))
+}
+
+/// Used of total: `24.2 of 31.8 GB`.
+pub fn mem_total(lang: Lang, used: u64, total: u64) -> String {
+    let of = match lang {
+        Lang::En => "of",
+        Lang::Ru => "из",
+    };
+    format!("{} {of} {} {}", gb(lang, used), gb(lang, total), unit(lang))
+}
+
+pub fn tip_memory(lang: Lang, used: u64, total: u64) -> String {
+    match lang {
+        Lang::En => format!("{} in use", mem_total(lang, used, total)),
+        Lang::Ru => format!("Занято {}", mem_total(lang, used, total)),
+    }
+}
+
+/// How long a state has lasted: `now`, `7 min`, `3 h`, `2 d`.
+pub fn ago(lang: Lang, ms: i64) -> String {
+    let (now, min, h, d) = match lang {
+        Lang::En => ("now", "min", "h", "d"),
+        Lang::Ru => ("сейчас", "мин", "ч", "дн"),
+    };
+    match ms.max(0) {
+        m if m < 60_000 => now.to_owned(),
+        m if m < 3_600_000 => format!("{} {min}", m / 60_000),
+        m if m < DAY_MS => format!("{} {h}", m / 3_600_000),
+        m => format!("{} {d}", m / DAY_MS),
+    }
+}
+
+/// `at 20:40` today, otherwise `Sun 18:00`.
+pub fn reset_text(lang: Lang, at: i64, now: i64, tz_offset_min: i32) -> String {
     let offset = i64::from(tz_offset_min) * 60_000;
     let (local_at, local_now) = (at + offset, now + offset);
     let minutes = local_at.rem_euclid(DAY_MS) / 60_000;
     let clock = format!("{:02}:{:02}", minutes / 60, minutes % 60);
     let (day_at, day_now) = (local_at.div_euclid(DAY_MS), local_now.div_euclid(DAY_MS));
-    if day_at == day_now {
-        format!("в {clock}")
-    } else {
-        format!("{} {clock}", WEEKDAYS[day_at.rem_euclid(7) as usize])
+    let day = day_at.rem_euclid(7) as usize;
+    match (lang, day_at == day_now) {
+        (Lang::En, true) => format!("at {clock}"),
+        (Lang::Ru, true) => format!("в {clock}"),
+        (Lang::En, false) => format!("{} {clock}", WEEKDAYS_EN[day]),
+        (Lang::Ru, false) => format!("{} {clock}", WEEKDAYS_RU[day]),
     }
 }
 
-pub fn tip_limit(view: &LimitView, now: i64, tz_offset_min: i32) -> String {
-    let window = match view.window {
-        LimitWindow::FiveHour => "5-часового",
-        LimitWindow::Week => "недельного",
+fn resets(lang: Lang, view: &LimitView, now: i64, tz: i32) -> String {
+    let word = match lang {
+        Lang::En => "resets",
+        Lang::Ru => "сброс",
     };
-    let reset = view.resets_at.map(|at| format!(", сброс {}", reset_text(at, now, tz_offset_min))).unwrap_or_default();
-    format!("Израсходовано {}% {window} лимита{reset}", view.used)
+    view.resets_at.map(|at| format!(", {word} {}", reset_text(lang, at, now, tz))).unwrap_or_default()
+}
+
+pub fn tip_limit(lang: Lang, view: &LimitView, now: i64, tz_offset_min: i32) -> String {
+    let reset = resets(lang, view, now, tz_offset_min);
+    match lang {
+        Lang::En => {
+            let window = match view.window {
+                LimitWindow::FiveHour => "5-hour",
+                LimitWindow::Week => "weekly",
+            };
+            format!("{}% of the {window} limit used{reset}", view.used)
+        }
+        Lang::Ru => {
+            let window = match view.window {
+                LimitWindow::FiveHour => "5-часового",
+                LimitWindow::Week => "недельного",
+            };
+            format!("Израсходовано {}% {window} лимита{reset}", view.used)
+        }
+    }
+}
+
+/// The line under a limit ring in the sessions window: `week, resets Sun 18:00`.
+pub fn limit_caption(lang: Lang, view: &LimitView, now: i64, tz_offset_min: i32) -> String {
+    let window = match (lang, view.window) {
+        (Lang::En, LimitWindow::FiveHour) => "5 hours",
+        (Lang::En, LimitWindow::Week) => "week",
+        (Lang::Ru, LimitWindow::FiveHour) => "5 часов",
+        (Lang::Ru, LimitWindow::Week) => "неделя",
+    };
+    format!("{window}{}", resets(lang, view, now, tz_offset_min))
+}
+
+/// `48 total`.
+pub fn total(lang: Lang, n: usize) -> String {
+    match lang {
+        Lang::En => format!("{n} total"),
+        Lang::Ru => format!("{n} всего"),
+    }
+}
+
+/// The folded rest of a group: `and 3 more`.
+pub fn more(lang: Lang, n: usize) -> String {
+    match lang {
+        Lang::En => format!("and {n} more"),
+        Lang::Ru => format!("и ещё {n}"),
+    }
+}
+
+/// A session's question in the language's own quotation marks.
+pub fn quote(lang: Lang, s: &str) -> String {
+    match lang {
+        Lang::En => format!("\u{201c}{s}\u{201d}"),
+        Lang::Ru => format!("«{s}»"),
+    }
 }
 
 /// The local offset from UTC in minutes, daylight saving included.

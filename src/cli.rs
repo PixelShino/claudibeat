@@ -1,5 +1,6 @@
-//! `claudibeat --render <dir> [--bg <png>]`: every surface drawn to PNG with
-//! demo data, to compare against the mock-ups without touching the desktop.
+//! `claudibeat --render <dir> [--bg <png>] [--lang en|ru]`: every surface
+//! drawn to PNG with demo data, to compare against the mock-ups and to make
+//! the README pictures without touching the desktop.
 
 use crate::limits::{LimitView, LimitWindow};
 use crate::memory::MemGroups;
@@ -10,6 +11,7 @@ use crate::render::flyout::{FlyoutModel, layout_flyout, paint_flyout};
 use crate::render::strip::{STRIP_H, StripItem, StripModel, layout_strip, paint_strip};
 use crate::render::toast::{layout_toast, paint_toast, paint_tooltip, toast_model, tooltip_size};
 use crate::render::{Color, Painter, Rect, Renderer, TRANSPARENT};
+use crate::text::Lang;
 use std::path::Path;
 
 const SCALE: f32 = 2.0;
@@ -52,20 +54,26 @@ fn demo_row(key: &str, title: &str, project: &str, state: SessionState, ask: Opt
     }
 }
 
-/// Demo sessions: invented titles, safe to publish.
-fn demo_rows(extra_waiting: usize) -> Vec<Row> {
+/// Demo sessions: invented titles, safe to publish. Each text comes in
+/// English and Russian.
+fn demo_rows(extra_waiting: usize, lang: Lang) -> Vec<Row> {
     use SessionState::*;
+    let t = |en: &'static str, ru: &'static str| if lang == Lang::En { en } else { ru };
     let mut rows = vec![
-        demo_row("w1", "Платёжный модуль: возвраты", "billing", Waiting, Some("Оставить старый API до релиза?"), None, 7),
-        demo_row("d1", "Лендинг кофейни: форма заказа", "coffee-site", Done, None, None, 3),
-        demo_row("d2", "Парсер прайс-листов", "price-parser", Done, None, None, 33),
-        demo_row("r1", "Миграция базы на Postgres", "core-api", Working, None, Some("запускает тесты миграций"), 10),
-        demo_row("r2", "Бот поддержки: сценарии", "support-bot", Working, None, Some("правит src/flows/refund.ts"), 1),
-        demo_row("r3", "Отчёт по трафику за октябрь", "analytics", Working, None, Some("строит графики"), 4),
-        demo_row("r4", "Рефакторинг авторизации", "core-api", Working, None, Some("читает auth/session.rs"), 2),
+        demo_row("w1", t("Payments: refunds", "Платёжный модуль: возвраты"), "billing", Waiting, Some(t("Keep the old API until the release?", "Оставить старый API до релиза?")), None, 7),
+        demo_row("d1", t("Coffee shop site: order form", "Лендинг кофейни: форма заказа"), "coffee-site", Done, None, None, 3),
+        demo_row("d2", t("Price list parser", "Парсер прайс-листов"), "price-parser", Done, None, None, 33),
+        demo_row("r1", t("Move the database to Postgres", "Миграция базы на Postgres"), "core-api", Working, None, Some(t("running migration tests", "запускает тесты миграций")), 10),
+        demo_row("r2", t("Support bot: refund flow", "Бот поддержки: сценарии"), "support-bot", Working, None, Some(t("editing src/flows/refund.ts", "правит src/flows/refund.ts")), 1),
+        demo_row("r3", t("October traffic report", "Отчёт по трафику за октябрь"), "analytics", Working, None, Some(t("drawing charts", "строит графики")), 4),
+        demo_row("r4", t("Auth refactor", "Рефакторинг авторизации"), "core-api", Working, None, Some(t("reading auth/session.rs", "читает auth/session.rs")), 2),
     ];
     for i in 0..extra_waiting {
-        rows.push(demo_row(&format!("x{i}"), &format!("Задача из бэклога №{}", i + 2), "backlog", Waiting, Some("Какой вариант взять?"), None, 20 + i as i64));
+        let title = match lang {
+            Lang::En => format!("Backlog task #{}", i + 2),
+            Lang::Ru => format!("Задача из бэклога №{}", i + 2),
+        };
+        rows.push(demo_row(&format!("x{i}"), &title, "backlog", Waiting, Some(t("Which option should I take?", "Какой вариант взять?")), None, 20 + i as i64));
     }
     rows
 }
@@ -100,7 +108,7 @@ fn scene(p: &Painter, h: f32, bg: Option<&Path>, strip: &StripModel, hover: Opti
     });
 }
 
-pub fn render_samples(dir: &Path, bg: Option<&Path>) -> windows::core::Result<()> {
+pub fn render_samples(dir: &Path, bg: Option<&Path>, lang: Lang) -> windows::core::Result<()> {
     std::fs::create_dir_all(dir).map_err(io_err)?;
     let r = Renderer::new()?;
     for s in strip_samples() {
@@ -121,8 +129,8 @@ pub fn render_samples(dir: &Path, bg: Option<&Path>) -> windows::core::Result<()
         ("flyout-scroll", 11, [true, false, false], 640.0),
     ];
     for (name, extra, expanded, max_h) in flyouts {
-        let rows = demo_rows(extra);
-        let m = FlyoutModel { groups: groups(&rows), total: 48, expanded, mem: demo_mem(), limits: demo_limits(), now: NOW, tz: TZ };
+        let rows = demo_rows(extra, lang);
+        let m = FlyoutModel { groups: groups(&rows), total: 48, expanded, mem: demo_mem(), limits: demo_limits(), now: NOW, tz: TZ, lang };
         let mut size = (0.0, 0.0);
         r.render(1.0, 1.0, 1.0, TRANSPARENT, |p| {
             let l = layout_flyout(&m, p, max_h);
@@ -139,7 +147,7 @@ pub fn render_samples(dir: &Path, bg: Option<&Path>) -> windows::core::Result<()
         r.save_png(&frame, &dir.join(format!("{name}.png")))?;
     }
 
-    let rows = demo_rows(0);
+    let rows = demo_rows(0, lang);
     let mut no_link = rows.clone();
     no_link[1].link = None;
     let toasts: [(&str, Vec<ToastEvent>, &[Row]); 3] = [
@@ -156,7 +164,7 @@ pub fn render_samples(dir: &Path, bg: Option<&Path>) -> windows::core::Result<()
             let mut bottom = h - STRIP_H - 12.0;
             let mut placed = Vec::new();
             for e in events.iter().rev() {
-                let m = toast_model(e, data, NOW);
+                let m = toast_model(e, data, NOW, lang);
                 let l = layout_toast(&m, p);
                 let dy = bottom - l.card.bottom();
                 bottom -= l.card.h + 8.0;
@@ -172,7 +180,7 @@ pub fn render_samples(dir: &Path, bg: Option<&Path>) -> windows::core::Result<()
     let h = 120.0;
     let frame = r.render(CANVAS_W, h, SCALE, TRANSPARENT, |p| {
         scene(p, h, bg, &strip, Some(StripItem::Working));
-        let text = crate::text::tip_working(4);
+        let text = crate::text::tip_working(lang, 4);
         let (_, th) = tooltip_size(p, &text);
         p.translate(70.0, h - STRIP_H - th + 2.0, |p| paint_tooltip(p, &text));
     })?;

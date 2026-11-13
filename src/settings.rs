@@ -1,5 +1,6 @@
 //! The few choices claudibeat remembers, in `%APPDATA%\claudibeat\settings.json`.
 
+use crate::text::Lang;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -8,11 +9,13 @@ use std::path::{Path, PathBuf};
 pub struct Settings {
     /// Play a soft sound with each toast.
     pub sound: bool,
+    /// The interface language; English unless the person picks Russian.
+    pub language: Lang,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { sound: true }
+        Settings { sound: true, language: Lang::En }
     }
 }
 

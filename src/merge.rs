@@ -43,10 +43,11 @@ pub struct Groups<'a> {
     pub working: Vec<&'a Row>,
 }
 
-/// `D:\Code\Projects\coffee-site` → `coffee-site`; the app's own scratch folders → «без папки».
+/// `D:\Code\Projects\coffee-site` → `coffee-site`. The app's own scratch folders
+/// give an empty name, which the window shows as "no folder" in its language.
 pub fn project_of(cwd: &str) -> String {
     if cwd.to_lowercase().contains("scratch-workspaces") {
-        return "без папки".to_owned();
+        return String::new();
     }
     cwd.split(['\\', '/']).rfind(|p| !p.is_empty()).unwrap_or(cwd).to_owned()
 }

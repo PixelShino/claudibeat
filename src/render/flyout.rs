@@ -6,7 +6,7 @@ use super::{HAIR, HOVER, INK, MUTED, Painter, Rect, SURFACE, TIME, TRACK, TextSt
 use crate::limits::{LimitView, LimitWindow};
 use crate::memory::MemGroups;
 use crate::merge::{Groups, Row, open_target};
-use crate::text::{ago, gb, reset_text};
+use crate::text::{Lang, ago, gb_value, limit_caption, mem_total, more, quote, total};
 
 pub const CARD_W: f32 = 384.0;
 /// Room around the card for its shadow.
@@ -26,7 +26,6 @@ const ROW_TIME: TextStyle = TextStyle::new(12.0, Weight::Regular, TIME);
 const MEM_NAME: TextStyle = TextStyle::new(12.5, Weight::Regular, INK);
 const BIG: TextStyle = TextStyle::new(13.0, Weight::Semibold, INK);
 
-const GROUP_LABELS: [&str; 3] = ["Ждут ответа", "Готово, не открыто", "В работе"];
 const GROUP_ICONS: [Icon; 3] = [Icon::Wait, Icon::Done, Icon::Star];
 
 pub struct FlyoutModel<'a> {
@@ -38,6 +37,7 @@ pub struct FlyoutModel<'a> {
     pub limits: Vec<LimitView>,
     pub now: i64,
     pub tz: i32,
+    pub lang: Lang,
 }
 
 impl FlyoutModel<'_> {
@@ -209,11 +209,13 @@ pub fn layout_flyout(m: &FlyoutModel, p: &Painter, max_h: f32) -> FlyoutLayout {
     }
 }
 
-fn sub_line(row: &Row, group: usize) -> String {
+fn sub_line(row: &Row, group: usize, lang: Lang) -> String {
+    let w = lang.words();
+    let project = || if row.project.is_empty() { w.no_folder.to_owned() } else { row.project.clone() };
     match group {
-        0 => row.ask.as_deref().map_or_else(|| "Ждёт ответа".to_owned(), |a| format!("«{a}»")),
-        1 => row.project.clone(),
-        _ => row.doing.as_deref().map_or_else(|| row.project.clone(), capitalise),
+        0 => row.ask.as_deref().map_or_else(|| w.waiting_one.to_owned(), |a| quote(lang, a)),
+        1 => project(),
+        _ => row.doing.as_deref().map_or_else(project, capitalise),
     }
 }
 
@@ -235,9 +237,9 @@ pub fn paint_flyout(p: &Painter, l: &FlyoutLayout, m: &FlyoutModel, hover_row: O
     p.fill_round(card, RADIUS, SURFACE);
 
     // Title and total, on one baseline.
-    p.text("Сессии Claude", card.x + 16.0, l.title_y, &TITLE);
-    let total = format!("{} всего", m.total);
-    text_right(p, &total, card.right() - 16.0, l.title_y + (h.h14 - h.h12) * 0.75, &SMALL);
+    let w = m.lang.words();
+    p.text(w.flyout_title, card.x + 16.0, l.title_y, &TITLE);
+    text_right(p, &total(m.lang, m.total), card.right() - 16.0, l.title_y + (h.h14 - h.h12) * 0.75, &SMALL);
 
     let scroll = scroll.clamp(0.0, l.scroll_max);
     p.clip(l.list, |p| {
@@ -249,7 +251,7 @@ pub fn paint_flyout(p: &Painter, l: &FlyoutLayout, m: &FlyoutModel, hover_row: O
             match block {
                 Block::Divider => p.fill_rect(r, HAIR),
                 Block::GroupHead(g) => {
-                    p.text(GROUP_LABELS[*g], r.x, r.y, &HEAD);
+                    p.text(w.groups[*g], r.x, r.y, &HEAD);
                     text_right(p, &m.group(*g).len().to_string(), r.right(), r.y, &HEAD);
                 }
                 Block::Row { group, index } => {
@@ -260,7 +262,7 @@ pub fn paint_flyout(p: &Painter, l: &FlyoutLayout, m: &FlyoutModel, hover_row: O
                     }
                     let top = r.y + 7.0;
                     icon(p, GROUP_ICONS[*group], r.x + 8.0 + 9.0, top + h.h13 / 2.0, 14.0, INK);
-                    let time = ago(m.now - row.since);
+                    let time = ago(m.lang, m.now - row.since);
                     let (time_w, _) = p.measure(&time, &ROW_TIME);
                     p.text(&time, r.right() - 8.0 - time_w, top + 1.0, &ROW_TIME);
                     let text_x = r.x + 8.0 + 18.0 + 8.0;
@@ -269,15 +271,15 @@ pub fn paint_flyout(p: &Painter, l: &FlyoutLayout, m: &FlyoutModel, hover_row: O
                     if let Some(b) = p.text_box(&row.title, &style, max_w, false) {
                         p.draw_box(&b, text_x, top);
                     }
-                    if let Some(b) = p.text_box(&sub_line(row, *group), &SMALL, max_w, false) {
+                    if let Some(b) = p.text_box(&sub_line(row, *group, m.lang), &SMALL, max_w, false) {
                         p.draw_box(&b, text_x, top + h.h13 + 1.0);
                     }
                 }
                 Block::More { hidden, .. } => {
-                    p.text(&format!("и ещё {hidden}"), r.x + 34.0, r.y + 4.0, &SMALL);
+                    p.text(&more(m.lang, *hidden), r.x + 34.0, r.y + 4.0, &SMALL);
                 }
                 Block::Empty => {
-                    p.text("Никто не ждёт и не работает", r.x, r.y, &TextStyle { color: MUTED, ..ROW_TITLE });
+                    p.text(w.empty, r.x, r.y, &TextStyle { color: MUTED, ..ROW_TITLE });
                 }
             }
         }
@@ -288,19 +290,15 @@ pub fn paint_flyout(p: &Painter, l: &FlyoutLayout, m: &FlyoutModel, hover_row: O
     p.fill_rect(Rect::new(card.x, y, CARD_W, 1.0), HAIR);
     y += 1.0 + 8.0 + 4.0;
     let (left, right) = (card.x + 16.0, card.right() - 16.0);
-    p.text("Память", left, y, &HEAD);
-    text_right(p, &format!("{} из {} ГБ", gb(m.mem.used), gb(m.mem.total)), right, y, &HEAD);
+    p.text(w.memory, left, y, &HEAD);
+    text_right(p, &mem_total(m.lang, m.mem.used, m.mem.total), right, y, &HEAD);
     y += h.h12 + 6.0;
     let used_frac = if m.mem.total == 0 { 0.0 } else { m.mem.used as f32 / m.mem.total as f32 };
     p.bar(Rect::new(left, y, right - left, 4.0), used_frac, INK, TRACK);
     y += 4.0 + 10.0;
     let share = |v: u64| if m.mem.used == 0 { 0.0 } else { v as f32 / m.mem.used as f32 };
-    for (name, note, value) in [
-        ("Claude", "с MCP и терминалами", m.mem.claude),
-        ("Chrome", "", m.mem.chrome),
-        ("Python", "вне Claude", m.mem.python),
-        ("Остальное и система", "", m.mem.other),
-    ] {
+    let values = [m.mem.claude, m.mem.chrome, m.mem.python, m.mem.other];
+    for (&(name, note), value) in w.mem_rows.iter().zip(values) {
         let line_y = y + 3.0;
         let w = p.text(name, left, line_y, &MEM_NAME);
         if !note.is_empty() {
@@ -308,7 +306,7 @@ pub fn paint_flyout(p: &Painter, l: &FlyoutLayout, m: &FlyoutModel, hover_row: O
         }
         let value_x = right - 56.0;
         p.bar(Rect::new(value_x - 12.0 - 96.0, line_y + h.h125 / 2.0 - 1.5, 96.0, 3.0), share(value), INK, TRACK);
-        text_right(p, &format!("{} ГБ", gb(value)), right, line_y, &MEM_NAME);
+        text_right(p, &gb_value(m.lang, value), right, line_y, &MEM_NAME);
         y += 3.0 + h.h125 + 3.0;
     }
     y += 2.0;
@@ -320,7 +318,7 @@ pub fn paint_flyout(p: &Painter, l: &FlyoutLayout, m: &FlyoutModel, hover_row: O
     y += 6.0;
     p.fill_rect(Rect::new(card.x, y, CARD_W, 1.0), HAIR);
     y += 1.0 + 8.0 + 4.0;
-    p.text("Лимиты", left, y, &HEAD);
+    p.text(w.limits, left, y, &HEAD);
     y += h.h12 + 6.0;
     let mut x = left;
     let mut ordered = m.limits.clone();
@@ -332,12 +330,7 @@ pub fn paint_flyout(p: &Painter, l: &FlyoutLayout, m: &FlyoutModel, hover_row: O
         let tx = x + ring + 8.0;
         let ty = y + (block_h - h.h13 - h.h12) / 2.0;
         p.text(&format!("{}%", v.used), tx, ty, &BIG);
-        let label = match v.window {
-            LimitWindow::FiveHour => "5 часов",
-            LimitWindow::Week => "неделя",
-        };
-        let reset = v.resets_at.map(|at| format!(", сброс {}", reset_text(at, m.now, m.tz))).unwrap_or_default();
-        let w = p.text(&format!("{label}{reset}"), tx, ty + h.h13, &SMALL);
-        x = tx + w + 24.0;
+        let caption_w = p.text(&limit_caption(m.lang, v, m.now, m.tz), tx, ty + h.h13, &SMALL);
+        x = tx + caption_w + 24.0;
     }
 }

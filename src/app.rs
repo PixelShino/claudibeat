@@ -257,12 +257,13 @@ impl App {
 
     fn tip_text(&self, item: StripItem) -> String {
         let c = counts(&self.rows);
+        let lang = self.settings.language;
         match item {
-            StripItem::Waiting => tip_waiting(c.waiting),
-            StripItem::Done => tip_done(c.done),
-            StripItem::Working => tip_working(c.working),
-            StripItem::Memory => tip_memory(self.mem.used, self.mem.total),
-            StripItem::Limit => strip_limit(&self.limits).map_or_else(|| "Лимит пока неизвестен".to_owned(), |v| tip_limit(v, now_ms(), self.tz)),
+            StripItem::Waiting => tip_waiting(lang, c.waiting),
+            StripItem::Done => tip_done(lang, c.done),
+            StripItem::Working => tip_working(lang, c.working),
+            StripItem::Memory => tip_memory(lang, self.mem.used, self.mem.total),
+            StripItem::Limit => strip_limit(&self.limits).map_or_else(|| lang.words().limit_unknown.to_owned(), |v| tip_limit(lang, v, now_ms(), self.tz)),
         }
     }
 
@@ -331,6 +332,7 @@ impl App {
             limits: self.limits.clone(),
             now: now_ms(),
             tz: self.tz,
+            lang: self.settings.language,
         };
         // The window may reach the top of the work area; the list scrolls.
         let avail = (geo.rect.top - geo.work_top) as f32 / geo.scale;
@@ -361,7 +363,8 @@ impl App {
             return;
         };
         let now = now_ms();
-        let models: Vec<ToastModel> = self.stack.items.iter().map(|e| toast_model(e, &self.rows, now)).collect();
+        let lang = self.settings.language;
+        let models: Vec<ToastModel> = self.stack.items.iter().map(|e| toast_model(e, &self.rows, now, lang)).collect();
         let mut layouts = Vec::new();
         let _ = self.renderer.render(1.0, 1.0, 1.0, TRANSPARENT, |p| layouts = models.iter().map(|m| layout_toast(m, p)).collect());
         if layouts.len() != models.len() {
@@ -451,6 +454,11 @@ impl App {
                 let _ = self.settings.save(&self.settings_path);
             }
             Action::ToggleAutostart => shell::autostart_set(!shell::autostart_get()),
+            Action::SetLanguage(lang) => {
+                self.settings.language = lang;
+                let _ = self.settings.save(&self.settings_path);
+                self.draw_all();
+            }
             // SAFETY: ends our own message loop.
             Action::Quit => unsafe { PostQuitMessage(0) },
         }
@@ -515,7 +523,7 @@ impl App {
             Input::RightClick(Surface::Strip) => {
                 self.hide_tip();
                 let pending = self.rows.iter().any(|r| r.needs_you);
-                if let Some(a) = strip_window::menu(self.host, pending, self.settings.sound, shell::autostart_get()) {
+                if let Some(a) = strip_window::menu(self.host, pending, self.settings.sound, shell::autostart_get(), self.settings.language) {
                     self.act(a);
                 }
             }

@@ -3,6 +3,7 @@ use claudibeat::merge::{Row, groups};
 use claudibeat::model::SessionState;
 use claudibeat::render::flyout::{FlyoutModel, layout_flyout};
 use claudibeat::render::{Renderer, TRANSPARENT};
+use claudibeat::text::Lang;
 
 fn row(key: &str, state: SessionState, link: bool) -> Row {
     Row {
@@ -36,6 +37,7 @@ fn model<'a>(rows: &'a [Row], expanded: [bool; 3]) -> FlyoutModel<'a> {
         limits: Vec::new(),
         now: 0,
         tz: 0,
+        lang: Lang::En,
     }
 }
 

@@ -183,7 +183,7 @@ fn open_target_only_claude_links() {
 #[test]
 fn project_names() {
     assert_eq!(project_of("D:\\Code\\Projects\\coffee-site"), "coffee-site");
-    assert_eq!(project_of("C:/Users/x/scratch-workspaces/1/2"), "без папки");
+    assert_eq!(project_of("C:/Users/x/scratch-workspaces/1/2"), "", "no folder: the window names it in its own language");
     assert_eq!(project_of(""), "");
 }
 
