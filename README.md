@@ -12,7 +12,7 @@
 [![Rust](https://img.shields.io/badge/Rust-stable-1d1d1d?style=flat-square&logo=rust&logoColor=white)](#build)
 [![License: MIT](https://img.shields.io/badge/license-MIT-1d1d1d?style=flat-square)](LICENSE)
 [![exe size](https://img.shields.io/badge/exe-689_KiB-5d5d5d?style=flat-square)](#footprint)
-[![memory](https://img.shields.io/badge/memory-6.3_MB-5d5d5d?style=flat-square)](#footprint)
+[![memory](https://img.shields.io/badge/memory-9.6_MB-5d5d5d?style=flat-square)](#footprint)
 [![network: none](https://img.shields.io/badge/network-none-5d5d5d?style=flat-square)](#privacy)
 
 </div>
@@ -88,13 +88,13 @@ A folder watcher reacts within about 150 ms; a 2-second re-read covers anything 
 
 ## Footprint
 
-Measured on the author's machine (16 logical CPUs, 32 GB RAM) over three minutes with six or seven sessions working, which keeps the status-band folder changing every few seconds:
+Measured on the author's machine (16 logical CPUs, 32 GB RAM) over three minutes with six or seven sessions working, which keeps the status-band folder changing every few seconds. Only files whose size or time moved are read again, so a refresh over 77 sessions takes about 2 ms:
 
 | | |
 |---|---|
 | Executable | 689 KiB (`lto`, `strip`, `panic = "abort"`) |
-| Memory, private working set | 6.3 MB |
-| CPU | 0.22% of the machine on average (3.5% of one core) |
+| Memory, private working set | 9.6 MB |
+| CPU | 0.07% of the machine on average (1.1% of one core) |
 | Back after an Explorer restart | 0.97 s |
 
 ## Privacy

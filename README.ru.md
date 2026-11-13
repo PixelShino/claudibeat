@@ -12,7 +12,7 @@
 [![Rust](https://img.shields.io/badge/Rust-stable-1d1d1d?style=flat-square&logo=rust&logoColor=white)](#сборка)
 [![Лицензия: MIT](https://img.shields.io/badge/license-MIT-1d1d1d?style=flat-square)](LICENSE)
 [![размер exe](https://img.shields.io/badge/exe-689_KiB-5d5d5d?style=flat-square)](#сколько-весит)
-[![память](https://img.shields.io/badge/memory-6.3_MB-5d5d5d?style=flat-square)](#сколько-весит)
+[![память](https://img.shields.io/badge/memory-9.6_MB-5d5d5d?style=flat-square)](#сколько-весит)
 [![сеть: нет](https://img.shields.io/badge/network-none-5d5d5d?style=flat-square)](#приватность)
 
 </div>
@@ -88,13 +88,13 @@ cargo +stable-x86_64-pc-windows-gnu build --release
 
 ## Сколько весит
 
-Замер на машине автора (16 логических процессоров, 32 ГБ памяти), три минуты, в работе шесть-семь сессий, поэтому папка status-band меняется каждые несколько секунд:
+Замер на машине автора (16 логических процессоров, 32 ГБ памяти), три минуты, в работе шесть-семь сессий, поэтому папка status-band меняется каждые несколько секунд. Заново читаются только файлы, у которых изменились размер или время, и обновление по 77 сессиям занимает около 2 мс:
 
 | | |
 |---|---|
 | Исполняемый файл | 689 КиБ (`lto`, `strip`, `panic = "abort"`) |
-| Память, частный рабочий набор | 6,3 МБ |
-| Процессор | в среднем 0,22 % всей машины (3,5 % одного ядра) |
+| Память, частный рабочий набор | 9,6 МБ |
+| Процессор | в среднем 0,07 % всей машины (1,1 % одного ядра) |
 | Возврат после перезапуска Explorer | 0,97 с |
 
 ## Приватность
