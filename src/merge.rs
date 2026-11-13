@@ -164,9 +164,9 @@ pub fn groups(rows: &[Row]) -> Groups<'_> {
     let mut waiting = pick(SessionState::Waiting);
     waiting.sort_by_key(|r| r.since);
     let mut done = pick(SessionState::Done);
-    done.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
+    done.sort_by_key(|r| std::cmp::Reverse(r.last_activity_at));
     let mut working = pick(SessionState::Working);
-    working.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
+    working.sort_by_key(|r| std::cmp::Reverse(r.last_activity_at));
     Groups { waiting, done, working }
 }
 
