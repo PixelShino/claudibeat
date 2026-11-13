@@ -7,6 +7,8 @@ pub mod merge;
 pub mod model;
 pub mod notify;
 pub mod render;
+pub mod settings;
+pub mod sound;
 pub mod store;
 pub mod text;
 pub mod win;

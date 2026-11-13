@@ -110,7 +110,7 @@ fn redraw() {
     });
     if let Some(frame) = frame {
         taskbar::place_left(hwnd, bar, frame.width as i32);
-        if let Err(e) = layered::present(hwnd, &frame, None) {
+        if let Err(e) = layered::present(hwnd, &frame, None, true) {
             log(format!("present failed {e:?}"));
         }
     }

@@ -2,15 +2,18 @@
 //!
 //! The technique follows CodeZeno's Claude-Code-Usage-Monitor (MIT), which
 //! proved it on Windows 11 taskbars: a premultiplied 32-bit DIB, a screen DC
-//! as destination, and fully transparent pixels nudged to alpha 1 so the
-//! whole surface still takes the mouse.
+//! as destination, and (for the strip) fully transparent pixels nudged to
+//! alpha 1 so the whole surface still takes the mouse.
 
 use crate::render::Frame;
 use windows::Win32::Foundation::{COLORREF, HWND, POINT, SIZE};
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::UI::WindowsAndMessaging::{ULW_ALPHA, UpdateLayeredWindow};
 
-pub fn present(hwnd: HWND, frame: &Frame, pos: Option<POINT>) -> windows::core::Result<()> {
+/// Show `frame` in the layered window `hwnd`, moved to `pos` if given.
+/// With `catch_all`, transparent pixels still take the mouse; without it,
+/// clicks fall through them (popups' shadow margins).
+pub fn present(hwnd: HWND, frame: &Frame, pos: Option<POINT>, catch_all: bool) -> windows::core::Result<()> {
     // SAFETY: GDI objects are created, selected, used and released in order;
     // the DIB's bits are written within its size.
     unsafe {
@@ -34,7 +37,7 @@ pub fn present(hwnd: HWND, frame: &Frame, pos: Option<POINT>) -> windows::core::
                 let old = SelectObject(memory, bitmap);
                 let target = std::slice::from_raw_parts_mut(bits.cast::<u32>(), frame.pixels.len());
                 for (t, &s) in target.iter_mut().zip(&frame.pixels) {
-                    *t = if s >> 24 == 0 { 0x0100_0000 } else { s };
+                    *t = if catch_all && s >> 24 == 0 { 0x0100_0000 } else { s };
                 }
                 let size = SIZE { cx: frame.width as i32, cy: frame.height as i32 };
                 let origin = POINT { x: 0, y: 0 };
