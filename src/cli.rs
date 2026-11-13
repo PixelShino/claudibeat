@@ -151,12 +151,19 @@ pub fn render_samples(dir: &Path, bg: Option<&Path>) -> windows::core::Result<()
         let h = 420.0;
         let frame = r.render(CANVAS_W, h, SCALE, TRANSPARENT, |p| {
             scene(p, h, bg, &strip, None);
+            // Lay out from the strip upwards, then paint top-down as the app
+            // does, so no card's shadow falls on the card below it.
             let mut bottom = h - STRIP_H - 12.0;
-            for (i, e) in events.iter().rev().enumerate() {
+            let mut placed = Vec::new();
+            for e in events.iter().rev() {
                 let m = toast_model(e, data, NOW);
                 let l = layout_toast(&m, p);
-                p.translate(8.0 - l.card.x, bottom - l.card.bottom(), |p| paint_toast(p, &l, &m, i == 0 && name == "toasts"));
+                let dy = bottom - l.card.bottom();
                 bottom -= l.card.h + 8.0;
+                placed.push((m, l, dy));
+            }
+            for (m, l, dy) in placed.iter().rev() {
+                p.translate(8.0 - l.card.x, *dy, |p| paint_toast(p, l, m, false));
             }
         })?;
         r.save_png(&frame, &dir.join(format!("{name}.png")))?;
