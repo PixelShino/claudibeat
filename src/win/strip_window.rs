@@ -61,6 +61,14 @@ impl StripWindow {
             )
             .ok()?;
             taskbar::embed(hwnd, bar);
+            if GetParent(hwnd).ok() != Some(bar) {
+                // Explorer can refuse the child for a while (seen for minutes
+                // after a process holding a strip was killed). The window would
+                // then sit on the desktop's top-left corner: drop it and try
+                // again on the next refresh instead.
+                let _ = DestroyWindow(hwnd);
+                return None;
+            }
             self.hwnd = Some(hwnd);
             Some((hwnd, bar))
         }
