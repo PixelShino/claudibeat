@@ -1,0 +1,5 @@
+{"v":1,"updatedAt":1794566092481,"sessions":[
+{"desktopId":"local_aaa","title":"Сессия А","cwd":"D:\\Code\\Projects\\coffee-site","isRunning":true,"lastActivityAt":1794566000000,"link":"claude://claude.ai/epitaxy/local_aaa","pinned":false},
+{"desktopId":"local_bbb","title":"Сессия Б","cwd":"D:\\Code\\Projects\\price-parser","isRunning":false,"lastActivityAt":1794565000000,"link":"claude://claude.ai/epitaxy/local_bbb","pinned":true},
+{"desktopId":"local_ccc","title":"","cwd":"C:\\Users\\X\\AppData\\Local\\Claude-Data\\scratch-workspaces\\1\\2","isRunning":false,"lastActivityAt":1794000000000,"link":null,"pinned":false}
+]}

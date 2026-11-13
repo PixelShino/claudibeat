@@ -2,3 +2,8 @@ bin/
 obj/
 *.pdb
 *.log
+
+
+# Added by cargo
+
+/target
