@@ -149,6 +149,22 @@ pub(crate) fn surface_message(surface: Surface, hwnd: HWND, msg: u32, wp: WPARAM
     }
 }
 
+/// Where the pointer is inside `hwnd` (client pixels), if it is over that
+/// window right now. Mouse-leave messages can go missing when a window
+/// changes under a still pointer; this is the ground truth.
+pub fn cursor_over(hwnd: HWND) -> Option<(i32, i32)> {
+    // SAFETY: plain queries with local out parameters.
+    unsafe {
+        let mut pt = POINT::default();
+        GetCursorPos(&mut pt).ok()?;
+        if WindowFromPoint(pt) != hwnd {
+            return None;
+        }
+        let _ = windows::Win32::Graphics::Gdi::ScreenToClient(hwnd, &mut pt);
+        Some((pt.x, pt.y))
+    }
+}
+
 /// Physical pixels to DIPs.
 pub fn dip(px: i32, scale: f32) -> f32 {
     px as f32 / scale

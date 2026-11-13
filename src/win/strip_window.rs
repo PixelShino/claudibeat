@@ -64,6 +64,10 @@ impl StripWindow {
         }
     }
 
+    pub fn hwnd(&self) -> Option<HWND> {
+        self.hwnd
+    }
+
     /// Put `frame` at the taskbar's left edge.
     pub fn show(&self, hwnd: HWND, bar: HWND, frame: &Frame) -> windows::core::Result<()> {
         taskbar::place_left(hwnd, bar, frame.width as i32);

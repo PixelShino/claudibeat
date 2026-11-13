@@ -58,6 +58,10 @@ impl Popup {
         }
     }
 
+    pub fn hwnd(&self) -> HWND {
+        self.hwnd
+    }
+
     pub fn visible(&self) -> bool {
         self.visible
     }

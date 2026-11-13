@@ -19,7 +19,7 @@ use crate::store::Store;
 use crate::text::{local_tz_offset_min, tip_done, tip_limit, tip_memory, tip_waiting, tip_working};
 use crate::win::popup::{self, Popup};
 use crate::win::strip_window::{self, StripWindow};
-use crate::win::{Action, Input, Surface, WM_FOLDER_CHANGED, WM_INPUT_READY, set_hand, shell, taskbar};
+use crate::win::{Action, Input, Surface, WM_FOLDER_CHANGED, WM_INPUT_READY, cursor_over, set_hand, shell, taskbar};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -268,7 +268,27 @@ impl App {
 
     // ---- drawing ----------------------------------------------------------
 
+    /// Re-derive hover state from where the pointer really is, so a lost
+    /// mouse-leave can never leave a highlight or a paused toast behind.
+    fn sync_pointer(&mut self) {
+        let over = if self.toasts.visible() { cursor_over(self.toasts.hwnd()) } else { None };
+        let (hovered, close) = match over {
+            Some((x, y)) => (true, self.toast_at(x, y).1),
+            None => (false, None),
+        };
+        self.toast_hovered = hovered;
+        self.toast_hover_close = close;
+        if self.hover.is_some() && self.strip.hwnd().and_then(cursor_over).is_none() {
+            self.hover = None;
+            self.hide_tip();
+        }
+        if self.fly_hover.is_some() && !(self.flyout.visible() && cursor_over(self.flyout.hwnd()).is_some()) {
+            self.fly_hover = None;
+        }
+    }
+
     fn draw_all(&mut self) {
+        self.sync_pointer();
         self.draw_strip();
         if self.flyout.visible() {
             self.draw_flyout();
@@ -649,6 +669,11 @@ impl App {
     }
 
     fn tick_toasts(&mut self) {
+        let close = self.toast_hover_close;
+        self.sync_pointer();
+        if close != self.toast_hover_close {
+            self.draw_toasts();
+        }
         if !self.toasts.visible() || self.toast_hovered {
             return;
         }
