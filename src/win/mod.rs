@@ -155,6 +155,20 @@ pub(crate) fn surface_message(surface: Surface, hwnd: HWND, msg: u32, wp: WPARAM
             emit(Input::Deactivated(surface));
             Some(LRESULT(0))
         }
+        // Alt+F4 closes the window it is pressed in, as losing focus does;
+        // answering it here keeps it from turning into a WM_CLOSE.
+        WM_SYSCOMMAND if (wp.0 & 0xFFF0) as u32 == SC_CLOSE => {
+            emit(Input::Deactivated(surface));
+            Some(LRESULT(0))
+        }
+        // A WM_CLOSE from outside (taskkill without /F picks any one of our
+        // top-level windows) means "quit": leave as the menu does, instead
+        // of letting DefWindowProc destroy a popup under the app.
+        WM_CLOSE => {
+            // SAFETY: ends this thread's message loop; every window is ours.
+            unsafe { PostQuitMessage(0) };
+            Some(LRESULT(0))
+        }
         // Clicking the strip or a toast must not take focus from the
         // person's own window; only the sessions window activates itself.
         WM_MOUSEACTIVATE if surface != Surface::Flyout => Some(LRESULT(MA_NOACTIVATE as isize)),
@@ -181,5 +195,37 @@ pub fn cursor_over(hwnd: HWND) -> Option<(i32, i32)> {
         }
         let _ = windows::Win32::Graphics::Gdi::ScreenToClient(hwnd, &mut pt);
         Some((pt.x, pt.y))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Take a pending `WM_QUIT` off this thread's queue, if there is one.
+    fn quit_pending() -> bool {
+        let mut msg = MSG::default();
+        // SAFETY: peeks at the calling thread's own queue.
+        unsafe { PeekMessageW(&mut msg, None, WM_QUIT, WM_QUIT, PM_REMOVE).as_bool() }
+    }
+
+    #[test]
+    fn a_close_request_to_any_window_quits_the_app() {
+        // taskkill without /F picks one of our top-level windows, not
+        // necessarily the host: a popup must not just be destroyed.
+        while quit_pending() {}
+        let answer = surface_message(Surface::Toasts, HWND::default(), WM_CLOSE, WPARAM(0), LPARAM(0));
+        assert_eq!(answer, Some(LRESULT(0)), "handled, so DefWindowProc never destroys the popup");
+        assert!(quit_pending(), "the message loop is told to end");
+    }
+
+    #[test]
+    fn alt_f4_closes_the_sessions_window_not_the_app() {
+        while quit_pending() {}
+        while next_input().is_some() {}
+        let answer = surface_message(Surface::Flyout, HWND::default(), WM_SYSCOMMAND, WPARAM(SC_CLOSE as usize), LPARAM(0));
+        assert_eq!(answer, Some(LRESULT(0)), "no WM_CLOSE follows");
+        assert_eq!(next_input(), Some(Input::Deactivated(Surface::Flyout)));
+        assert!(!quit_pending());
     }
 }
