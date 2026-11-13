@@ -1,5 +1,7 @@
 #![windows_subsystem = "windows"]
 
+mod spike;
+
 use std::path::PathBuf;
 
 fn main() {
@@ -11,6 +13,10 @@ fn main() {
     }
     let args: Vec<String> = std::env::args().skip(1).collect();
     let value = |flag: &str| args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).map(PathBuf::from);
+    if args.iter().any(|a| a == "--spike") {
+        spike::run();
+        return;
+    }
     if let Some(dir) = value("--render") {
         let code = claudibeat::cli::render_samples(&dir, value("--bg").as_deref()).map_or(1, |()| 0);
         std::process::exit(code);
