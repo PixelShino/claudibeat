@@ -4,5 +4,6 @@ pub mod limits;
 pub mod memory;
 pub mod merge;
 pub mod model;
+pub mod notify;
 pub mod store;
 pub mod text;
