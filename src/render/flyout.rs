@@ -184,7 +184,7 @@ fn settings_row_height(h: &Heights) -> f32 {
     9.0 + h.h13 + 2.0 + h.h12 + 9.0
 }
 
-fn layout_settings(m: &FlyoutModel, p: &Painter) -> FlyoutLayout {
+fn layout_settings(p: &Painter) -> FlyoutLayout {
     let h = heights(p);
     let (card_x, card_y) = (M_SIDE, M_TOP);
     let title_y = card_y + 6.0 + 10.0;
@@ -199,7 +199,6 @@ fn layout_settings(m: &FlyoutModel, p: &Painter) -> FlyoutLayout {
     let lang_row = Rect::new(card_x + 8.0, y, CARD_W - 16.0, rh);
     controls.extend(language_segments(p, lang_row.right() - 8.0, lang_row.y + rh / 2.0));
     y += rh;
-    let _ = m;
     let card_h = y + 8.0 - card_y;
     FlyoutLayout {
         width: CARD_W + 2.0 * M_SIDE,
@@ -219,7 +218,7 @@ fn layout_settings(m: &FlyoutModel, p: &Painter) -> FlyoutLayout {
 
 pub fn layout_flyout(m: &FlyoutModel, p: &Painter, max_h: f32) -> FlyoutLayout {
     if m.view == FlyoutView::Settings {
-        return layout_settings(m, p);
+        return layout_settings(p);
     }
     let h = heights(p);
     let card_x = M_SIDE;
