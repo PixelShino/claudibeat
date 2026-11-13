@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Полоса: варианты</title>
+<link rel="stylesheet" href="../base.css"></head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="g-work" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.75" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7 3.5a3.5 3.5 0 0 1 0 7z" fill="currentColor"/></symbol>
+    <symbol id="g-wait" viewBox="0 0 14 14"><circle cx="7" cy="7" r="4.5" fill="currentColor"/></symbol>
+    <symbol id="g-done" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.75" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4.6 7.2l1.6 1.6 3.3-3.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="g-mem" viewBox="0 0 14 14"><rect x="2.25" y="3.25" width="9.5" height="7.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 3.25v-1.5M9 3.25v-1.5M5 12.25v-1.5M9 12.25v-1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+  </defs>
+</svg>
+<div class="board">
+
+<!-- A -->
+<div>
+  <div class="cap"><b>A. Строка со словами</b><span>один ждёт ответа</span></div>
+  <div class="frame"><div class="taskbar"><div class="widget va">
+    <div class="item hot"><svg width="12" height="12"><use href="#g-wait"/></svg><span class="num">1</span><span class="lbl">ждёт</span></div>
+    <div class="item"><svg width="12" height="12"><use href="#g-done"/></svg><span class="num">2</span><span class="lbl">готово</span></div>
+    <div class="item"><svg width="12" height="12"><use href="#g-work"/></svg><span class="num">4</span><span class="lbl">в работе</span></div>
+    <div class="sep"></div>
+    <div class="item"><span class="num">24,2</span><span class="lbl">из 31,8 ГБ</span><div class="bar"><i style="width:76%"></i></div></div>
+    <div class="sep"></div>
+    <div class="item"><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="var(--track)" stroke-width="2"/><circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="22.8 34.6" transform="rotate(-90 7 7)"/></svg><span class="num">66%</span><span class="lbl">неделя</span></div>
+  </div></div></div>
+  <div class="frame" style="margin-top:8px"><div class="taskbar"><div class="widget va">
+    <div class="item zero"><svg width="12" height="12"><use href="#g-wait"/></svg><span class="num">0</span><span class="lbl">ждёт</span></div>
+    <div class="item zero"><svg width="12" height="12"><use href="#g-done"/></svg><span class="num">0</span><span class="lbl">готово</span></div>
+    <div class="item"><svg width="12" height="12"><use href="#g-work"/></svg><span class="num">2</span><span class="lbl">в работе</span></div>
+    <div class="sep"></div>
+    <div class="item"><span class="num">18,7</span><span class="lbl">из 31,8 ГБ</span><div class="bar"><i style="width:59%"></i></div></div>
+    <div class="sep"></div>
+    <div class="item"><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="var(--track)" stroke-width="2"/><circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="22.8 34.6" transform="rotate(-90 7 7)"/></svg><span class="num">66%</span><span class="lbl">неделя</span></div>
+  </div></div></div>
+</div>
+
+<!-- B -->
+<div>
+  <div class="cap"><b>B. Две строки, как часы справа</b><span>один ждёт ответа</span></div>
+  <div class="frame"><div class="taskbar"><div class="widget vb">
+    <div class="item hot"><div class="top"><svg width="10" height="10"><use href="#g-wait"/></svg>1</div><div class="sub">ждёт</div></div>
+    <div class="item"><div class="top"><svg width="10" height="10"><use href="#g-done"/></svg>2</div><div class="sub">готово</div></div>
+    <div class="item"><div class="top"><svg width="10" height="10"><use href="#g-work"/></svg>4</div><div class="sub">в работе</div></div>
+    <div class="sep"></div>
+    <div class="item"><div class="top">24,2 ГБ</div><div class="sub">память 76%</div></div>
+    <div class="sep"></div>
+    <div class="item"><div class="top"><svg width="12" height="12" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="var(--track)" stroke-width="2.25"/><circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" stroke-width="2.25" stroke-dasharray="22.8 34.6" transform="rotate(-90 7 7)"/></svg>66%</div><div class="sub">неделя</div></div>
+  </div></div></div>
+  <div class="frame" style="margin-top:8px"><div class="taskbar"><div class="widget vb">
+    <div class="item zero"><div class="top"><svg width="10" height="10"><use href="#g-wait"/></svg>0</div><div class="sub">ждёт</div></div>
+    <div class="item zero"><div class="top"><svg width="10" height="10"><use href="#g-done"/></svg>0</div><div class="sub">готово</div></div>
+    <div class="item"><div class="top"><svg width="10" height="10"><use href="#g-work"/></svg>2</div><div class="sub">в работе</div></div>
+    <div class="sep"></div>
+    <div class="item"><div class="top">18,7 ГБ</div><div class="sub">память 59%</div></div>
+    <div class="sep"></div>
+    <div class="item"><div class="top"><svg width="12" height="12" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="var(--track)" stroke-width="2.25"/><circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" stroke-width="2.25" stroke-dasharray="22.8 34.6" transform="rotate(-90 7 7)"/></svg>66%</div><div class="sub">неделя</div></div>
+  </div></div></div>
+</div>
+
+<!-- C -->
+<div>
+  <div class="cap"><b>C. Только значки и цифры</b><span>подписи во всплывающей подсказке</span></div>
+  <div class="frame"><div class="taskbar"><div class="widget vc">
+    <div class="item hot"><svg width="12" height="12"><use href="#g-wait"/></svg>1</div>
+    <div class="item"><svg width="12" height="12"><use href="#g-done"/></svg>2</div>
+    <div class="item"><svg width="12" height="12"><use href="#g-work"/></svg>4</div>
+    <div class="sep"></div>
+    <div class="item"><svg width="14" height="14"><use href="#g-mem"/></svg>76%</div>
+    <div class="item"><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="var(--track)" stroke-width="2"/><circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="22.8 34.6" transform="rotate(-90 7 7)"/></svg>66%</div>
+  </div></div></div>
+  <div class="frame" style="margin-top:8px"><div class="taskbar"><div class="widget vc">
+    <div class="item zero"><svg width="12" height="12"><use href="#g-wait"/></svg>0</div>
+    <div class="item zero"><svg width="12" height="12"><use href="#g-done"/></svg>0</div>
+    <div class="item"><svg width="12" height="12"><use href="#g-work"/></svg>2</div>
+    <div class="sep"></div>
+    <div class="item"><svg width="14" height="14"><use href="#g-mem"/></svg>59%</div>
+    <div class="item"><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="var(--track)" stroke-width="2"/><circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="22.8 34.6" transform="rotate(-90 7 7)"/></svg>66%</div>
+  </div></div></div>
+</div>
+
+</div>
+</body></html>

@@ -1,0 +1,67 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Полоса C v2</title><link rel="stylesheet" href="../base.css"></head><body>
+<svg width="0" height="0" style="position:absolute"><defs>
+<symbol id="g-wait" viewBox="0 0 14 14"><circle cx="7" cy="7" r="4.5" fill="currentColor"/></symbol>
+<symbol id="g-done" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.75" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4.6 7.2l1.6 1.6 3.3-3.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="g-star" viewBox="0 0 14 14"><g stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M7 1.6v10.8"/><path d="M2.3 4.3l9.4 5.4"/><path d="M2.3 9.7l9.4-5.4"/></g></symbol>
+<symbol id="g-play" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.75" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.7 4.6v4.8l3.9-2.4z" fill="currentColor"/></symbol>
+<symbol id="g-spin" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.25" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="24.7 33" stroke-linecap="round" transform="rotate(-90 7 7)"/></symbol>
+<symbol id="g-dots" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.75" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="4.6" cy="7" r="0.95" fill="currentColor"/><circle cx="7" cy="7" r="0.95" fill="currentColor"/><circle cx="9.4" cy="7" r="0.95" fill="currentColor"/></symbol>
+<symbol id="g-half" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.75" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7 3.5a3.5 3.5 0 0 1 0 7z" fill="currentColor"/></symbol>
+<symbol id="g-mem" viewBox="0 0 14 14"><rect x="2.25" y="3.25" width="9.5" height="7.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 3.25v-1.5M9 3.25v-1.5M5 12.25v-1.5M9 12.25v-1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+<symbol id="g-ring" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="rgba(0,0,0,0.14)" stroke-width="2"/><circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="22.8 34.6" transform="rotate(-90 7 7)"/></symbol>
+<symbol id="g-memfill" viewBox="0 0 14 14"><rect x="1.5" y="2.5" width="11" height="9" rx="2" fill="currentColor"/><path d="M5 2.5v-1M9 2.5v-1M5 12.5v-1M9 12.5v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol></defs></svg>
+<div class="board">
+
+<div>
+  <div class="cap"><b>1. Плашка квадратом</b><span>скругление как у кнопок самой панели</span></div>
+  <div class="frame"><div class="taskbar"><div class="widget c2">
+    <div class="item sq"><svg width="12" height="12"><use href="#g-wait"/></svg>1</div>
+    <div class="item"><svg width="13" height="13"><use href="#g-done"/></svg>2</div>
+    <div class="item"><svg width="13" height="13"><use href="#g-star"/></svg>4</div>
+    <div class="sep"></div>
+    <div class="item"><svg width="14" height="14"><use href="#g-mem"/></svg>76%</div>
+    <div class="item"><svg width="14" height="14"><use href="#g-ring"/></svg>66%</div>
+  </div></div></div>
+  <div class="frame" style="margin-top:8px"><div class="taskbar"><div class="widget c2">
+    <div class="item zero"><svg width="12" height="12"><use href="#g-wait"/></svg>0</div>
+    <div class="item zero"><svg width="13" height="13"><use href="#g-done"/></svg>0</div>
+    <div class="item"><svg width="13" height="13"><use href="#g-star"/></svg>2</div>
+    <div class="sep"></div>
+    <div class="item"><svg width="14" height="14"><use href="#g-mem"/></svg>59%</div>
+    <div class="item"><svg width="14" height="14"><use href="#g-ring"/></svg>66%</div>
+  </div></div></div>
+</div>
+
+<div>
+  <div class="cap"><b>2. Цифра в чёрном круге</b><span>значок остаётся, кругом выделено число</span></div>
+  <div class="frame"><div class="taskbar"><div class="widget c2">
+    <div class="item"><svg width="12" height="12"><use href="#g-wait"/></svg><span class="badge">1</span></div>
+    <div class="item"><svg width="13" height="13"><use href="#g-done"/></svg>2</div>
+    <div class="item"><svg width="13" height="13"><use href="#g-star"/></svg>4</div>
+    <div class="sep"></div>
+    <div class="item"><svg width="14" height="14"><use href="#g-mem"/></svg>76%</div>
+    <div class="item"><svg width="14" height="14"><use href="#g-ring"/></svg>66%</div>
+  </div></div></div>
+  <div class="frame open"><div class="taskbar"><div class="widget c2">
+    <div class="item"><svg width="12" height="12"><use href="#g-wait"/></svg><span class="badge">12</span></div>
+    <div class="item"><svg width="13" height="13"><use href="#g-done"/></svg>3</div>
+    <div class="item hovered"><svg width="13" height="13"><use href="#g-star"/></svg>4</div>
+    <div class="sep"></div>
+    <div class="item"><svg width="14" height="14"><use href="#g-memfill"/></svg>91%</div>
+    <div class="item"><svg width="14" height="14"><use href="#g-ring"/></svg>66%</div>
+  </div></div><div class="tip" style="left:92px">4 сессии в работе</div></div>
+  <div class="cap" style="margin-top:6px"><span>двузначное число, память за 85% (чип залит) и подсказка при наведении</span></div>
+</div>
+
+<div>
+  <div class="cap"><b>3. Значок «в работе»</b><span>обведён мой выбор</span></div>
+  <div class="icons">
+    <div class="ic pick"><div class="big"><svg width="16" height="16"><use href="#g-star"/></svg>4</div><div class="nm">звёздочка, как у Claude Code во время работы</div></div>
+    <div class="ic"><div class="big"><svg width="16" height="16"><use href="#g-play"/></svg>4</div><div class="nm">«запущено»</div></div>
+    <div class="ic"><div class="big"><svg width="16" height="16"><use href="#g-dots"/></svg>4</div><div class="nm">«пишет»</div></div>
+    <div class="ic"><div class="big"><svg width="16" height="16"><use href="#g-spin"/></svg>4</div><div class="nm">«загрузка»</div></div>
+    <div class="ic"><div class="big"><svg width="16" height="16"><use href="#g-half"/></svg>4</div><div class="nm">было в v1</div></div>
+  </div>
+</div>
+
+</div></body></html>
