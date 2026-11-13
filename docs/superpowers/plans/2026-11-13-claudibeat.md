@@ -235,7 +235,7 @@
     - значки: Wait 12, Done 13, Star 13, Mem 14, кольцо 14 (r 5.5, stroke 2);
     - полоса начинается в 8 DIP от левого края окна, общая высота окна 48.
   - Плашка: элемент Waiting при `waiting > 0` залит `#1d1d1d`, значок и число `#f6f6f6`. Нули (waiting, done, working) рисуются с непрозрачностью 0.42. `mem_alert` меняет `Mem` на `MemFull`. Лимит `None` даёт бледное кольцо и «–».
-  - `cli::render_samples(dir: &Path) -> Result<()>`: пишет `strip-wait.png` (1/2/4, 76%, 34%), `strip-calm.png` (0/0/2, 59%), `strip-12.png` (12/3/4, 91% alert), `strip-hover.png` (наведение на Working), `strip-nolimit.png`. Масштаб 2, подложка — `docs/mockups/taskbar-primary.png`, обрезанный до 960×48, чтобы сравнивать с макетом.
+  - `cli::render_samples(dir: &Path) -> Result<()>`: пишет `strip-wait.png` (1/2/4, 76%, 34%), `strip-calm.png` (0/0/2, 59%), `strip-12.png` (12/3/4, 91% alert), `strip-hover.png` (наведение на Working), `strip-nolimit.png`. Масштаб 2, подложка — ровный цвет панели или картинка из `--bg`, чтобы сравнивать с макетом.
   - `layered::present(hwnd: HWND, frame: &Frame, pos: Option<POINT>)`:
     - `UpdateLayeredWindow(ULW_ALPHA)` с DC экрана;
     - пиксели с альфой 0 заменяются на `0x01000000`, чтобы вся полоса ловила мышь (как `render_custom_window` у CodeZeno, `src/window/positioning.rs:160`).
@@ -251,7 +251,7 @@
 - [ ] **Step 1:** Тест `tests/render.rs`: `layout_strip` для `StripModel{waiting:12,..}` даёт элемент Waiting шире, чем для `waiting:1`, и элементы не перекрываются. Рендер `Frame` 100×48 с прозрачным фоном содержит пиксели с альфой 0 и пиксели текста с альфой больше 0.
 - [ ] **Step 2:** `cargo test --test render`, ожидаемо FAIL.
 - [ ] **Step 3:** Реализовать рендерер, значки, полосу и `--render`.
-- [ ] **Step 4:** `cargo test` PASS. `cargo run --release -- --render target/shots`. Главный агент открывает каждый PNG рядом с `docs/mockups/v2/strips-v2.png`, пишет критику (выравнивание по вертикали, вес шрифта, толщина линий значков, отступы, вид плашки) и возвращает исполнителю до совпадения.
+- [ ] **Step 4:** `cargo test` PASS. `cargo run --release -- --render target/shots`. Главный агент открывает каждый PNG рядом с `docs/mockups/v2/strips-v2.html`, пишет критику (выравнивание по вертикали, вес шрифта, толщина линий значков, отступы, вид плашки) и возвращает исполнителю до совпадения.
 - [ ] **Step 5:** Реализовать `win/layered.rs`, `win/taskbar.rs`, `examples/spike.rs`. `cargo build --release --example spike` чисто.
 - [ ] **Step 6: Пробный запуск на живой панели — только после «да» владельца.** Запустить `target\release\examples\spike.exe`, снять нижние 48 px основного монитора (`CopyFromScreen`, без фокуса окон). Проверка:
   - текст без цветной окантовки;
@@ -286,7 +286,7 @@
 - [ ] **Step 1:** Тест `tests/flyout.rs`: 5 ждущих, группа не раскрыта → в `rows` 3 ждущих и есть `more` для группы 0. Группа раскрыта → 5 строк. `max_h` маленький → высота окна равна `max_h`.
 - [ ] **Step 2:** `cargo test --test flyout`, ожидаемо FAIL.
 - [ ] **Step 3:** Реализовать.
-- [ ] **Step 4:** `cargo test` PASS. `--render`. Главный агент сверяет `flyout.png` с `docs/mockups/v1/flyout.png`, а уведомления с `docs/mockups/v1/toast.png`, пишет критику и возвращает исполнителю до совпадения.
+- [ ] **Step 4:** `cargo test` PASS. `--render`. Главный агент сверяет `flyout.png` с `docs/mockups/v1/flyout.html`, а уведомления с `docs/mockups/v1/toast.html`, пишет критику и возвращает исполнителю до совпадения.
 - [ ] **Step 5:** Коммит `Окно сессий и уведомления`.
 
 ### Task 8: Окна Win32 и действия
@@ -339,7 +339,7 @@
   - README: сборка (`cargo build --release`), запуск, `--render`, где лежат настройки, как выйти.
 
 - [ ] **Step 1:** `cargo build --release`, `cargo test`, `cargo clippy -- -D warnings`: всё чисто. `target\release\claudibeat.exe --dump target\dump.json`: числа совпадают с полосой status-band в Claude и с живыми группами памяти из Task 4.
-- [ ] **Step 2: Живая проверка — только после «да» владельца.** Запустить `target\release\claudibeat.exe`. Снять нижние 48 px основного монитора (PowerShell `CopyFromScreen`, без фокуса окон) и сравнить с `docs/mockups/v2/strips-v2.png`. Проверить по списку:
+- [ ] **Step 2: Живая проверка — только после «да» владельца.** Запустить `target\release\claudibeat.exe`. Снять нижние 48 px основного монитора (PowerShell `CopyFromScreen`, без фокуса окон) и сравнить с `docs/mockups/v2/strips-v2.html`. Проверить по списку:
   - полоса стоит слева и не перекрывает кнопки;
   - наведение и подсказка работают;
   - клик по «готово» с одной сессией открывает чат, и счётчик падает в течение 2 с;
@@ -368,5 +368,5 @@
   - память: `Get-Process claudibeat` (частный рабочий набор) за 10 минут простоя;
   - CPU: через `Get-Counter`;
   - размер: файл `target\release\claudibeat.exe`.
-- [ ] **Step 3:** Проверка приватности перед публикацией. В `docs/` и истории есть настоящие названия сессий, пути `C:\Users\<имя>`, имена проектов владельца. Заменить снимки на снимки с демо-данными. Владельцу предложить публиковать с новой историей (squash): переписывание истории только с его согласия.
+- [x] **Step 3:** Проверка приватности перед публикацией: настоящие названия сессий, снимок панели, имена проектов и адрес почты убраны из файлов и всей истории (переписана с согласия владельца 13.11.2026), снимки в README сделаны на демо-данных.
 - [ ] **Step 4:** Коммит `docs: polish README for public release`.
