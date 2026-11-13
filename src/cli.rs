@@ -176,3 +176,33 @@ pub fn render_samples(dir: &Path, bg: Option<&Path>) -> windows::core::Result<()
 fn ev(kind: ToastKind, keys: &[&str]) -> ToastEvent {
     ToastEvent { kind, keys: keys.iter().map(|k| k.to_string()).collect(), at: NOW, count: keys.len() }
 }
+
+/// `claudibeat --dump <file>`: today's counts, memory and limits as JSON, to
+/// check the numbers without any window.
+pub fn dump(path: &Path) -> std::io::Result<()> {
+    use crate::merge::{counts, merge_rows};
+    let mut store = crate::store::Store::new(crate::store::Store::default_dir());
+    let snap = store.read();
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
+    let c = counts(&merge_rows(&snap.index, &snap.files, &snap.acks, now));
+    let mem = crate::memory::sample();
+    let limits: Vec<serde_json::Value> = crate::limits::limit_views(snap.account.as_ref(), now)
+        .iter()
+        .map(|l| {
+            let window = match l.window {
+                LimitWindow::FiveHour => "five_hour",
+                LimitWindow::Week => "seven_day",
+            };
+            serde_json::json!({ "window": window, "used": l.used, "remaining": l.remaining, "resetsAt": l.resets_at })
+        })
+        .collect();
+    let value = serde_json::json!({
+        "counts": { "waiting": c.waiting, "done": c.done, "working": c.working, "total": c.total },
+        "mem": {
+            "claude": mem.claude, "chrome": mem.chrome, "python": mem.python, "other": mem.other,
+            "used": mem.used, "total": mem.total, "percent": mem.percent(),
+        },
+        "limits": limits,
+    });
+    std::fs::write(path, serde_json::to_string_pretty(&value).map_err(std::io::Error::other)?)
+}
