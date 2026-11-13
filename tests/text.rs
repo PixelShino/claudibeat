@@ -68,6 +68,7 @@ fn limits_pick_and_stale() {
     let shown = strip_limit(&views).unwrap();
     assert_eq!(shown.window, LimitWindow::Week);
     assert_eq!((shown.used, shown.remaining), (66, 34));
+    assert!((shown.used_fraction() - 0.66).abs() < 1e-6, "the ring fills with what is used");
     assert!(limit_views(Some(&account(NOW - 7 * 3_600_000)), NOW).is_empty());
     assert!(limit_views(None, NOW).is_empty());
 }
@@ -76,9 +77,9 @@ fn limits_pick_and_stale() {
 fn limit_tip() {
     let views = limit_views(Some(&account(NOW)), NOW);
     let week = views.iter().find(|v| v.window == LimitWindow::Week).unwrap();
-    assert_eq!(tip_limit(week, NOW, MSK), "Осталось 34% недельного лимита, сброс вс 18:00");
+    assert_eq!(tip_limit(week, NOW, MSK), "Израсходовано 66% недельного лимита, сброс вс 18:00");
     let five = views.iter().find(|v| v.window == LimitWindow::FiveHour).unwrap();
-    assert_eq!(tip_limit(five, NOW, MSK), "Осталось 77% 5-часового лимита, сброс в 20:41");
+    assert_eq!(tip_limit(five, NOW, MSK), "Израсходовано 23% 5-часового лимита, сброс в 20:41");
 }
 
 #[test]

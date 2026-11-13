@@ -31,7 +31,7 @@ pub struct StripModel {
     pub working: usize,
     pub mem_percent: u8,
     pub mem_alert: bool,
-    /// Percent left and the ring's fraction; `None` while unknown.
+    /// Percent used and the ring's fraction; `None` while unknown.
     pub limit: Option<(u8, f32)>,
 }
 
@@ -62,7 +62,7 @@ fn label(item: StripItem, m: &StripModel) -> String {
         StripItem::Done => m.done.to_string(),
         StripItem::Working => m.working.to_string(),
         StripItem::Memory => format!("{}%", m.mem_percent),
-        StripItem::Limit => m.limit.map_or("–".to_owned(), |(left, _)| format!("{left}%")),
+        StripItem::Limit => m.limit.map_or("–".to_owned(), |(used, _)| format!("{used}%")),
     }
 }
 

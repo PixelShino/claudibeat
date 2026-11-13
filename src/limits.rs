@@ -1,4 +1,5 @@
-//! The plan's usage windows, read as "what is left", like a battery.
+//! The plan's usage windows, shown as the part already used (the owner's
+//! choice: a ring that fills up reads faster than one that drains).
 
 use crate::model::AccountFile;
 
@@ -20,9 +21,9 @@ pub struct LimitView {
 }
 
 impl LimitView {
-    /// Fraction of the window still left, for the ring.
-    pub fn left_fraction(&self) -> f32 {
-        f32::from(self.remaining) / 100.0
+    /// Fraction of the window already used: how full the ring is.
+    pub fn used_fraction(&self) -> f32 {
+        f32::from(self.used) / 100.0
     }
 }
 
@@ -45,7 +46,7 @@ pub fn limit_views(account: Option<&AccountFile>, now: i64) -> Vec<LimitView> {
         .collect()
 }
 
-/// The strip shows the window closest to running out.
+/// The strip shows the fullest window: the one closest to running out.
 pub fn strip_limit(views: &[LimitView]) -> Option<&LimitView> {
-    views.iter().min_by_key(|v| v.remaining)
+    views.iter().max_by_key(|v| v.used)
 }

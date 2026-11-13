@@ -15,7 +15,7 @@ struct StripSample {
 }
 
 fn strip_samples() -> Vec<StripSample> {
-    let base = StripModel { waiting: 1, done: 2, working: 4, mem_percent: 76, mem_alert: false, limit: Some((34, 0.34)) };
+    let base = StripModel { waiting: 1, done: 2, working: 4, mem_percent: 76, mem_alert: false, limit: Some((66, 0.66)) };
     vec![
         StripSample { name: "strip-wait", model: base, hover: None },
         StripSample { name: "strip-calm", model: StripModel { waiting: 0, done: 0, working: 2, mem_percent: 59, ..base }, hover: None },

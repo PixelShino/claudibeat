@@ -77,7 +77,7 @@ pub fn tip_limit(view: &LimitView, now: i64, tz_offset_min: i32) -> String {
         LimitWindow::Week => "недельного",
     };
     let reset = view.resets_at.map(|at| format!(", сброс {}", reset_text(at, now, tz_offset_min))).unwrap_or_default();
-    format!("Осталось {}% {window} лимита{reset}", view.remaining)
+    format!("Израсходовано {}% {window} лимита{reset}", view.used)
 }
 
 /// The local offset from UTC in minutes, daylight saving included.

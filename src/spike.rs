@@ -1,6 +1,12 @@
 //! Throwaway probe (`claudibeat --spike`): put the live strip on the real
 //! taskbar and see that the layered child window, transparency and text hold
-//! up. Right-click quits. Replaced by `app` in Task 9.
+//! up, including across an Explorer restart. Right-click quits. Replaced by
+//! `app` in Task 9.
+//!
+//! A hidden top-level host window owns the timer and hears `TaskbarCreated`
+//! (broadcast to top-level windows only). The strip is a child of the
+//! taskbar, so Explorer takes it down with the taskbar; the host simply
+//! creates a new one.
 
 use claudibeat::limits::{limit_views, strip_limit};
 use claudibeat::merge::{counts, merge_rows};
@@ -8,11 +14,14 @@ use claudibeat::render::strip::{STRIP_H, StripModel, layout_strip, paint_strip};
 use claudibeat::render::{Renderer, TRANSPARENT};
 use claudibeat::store::Store;
 use claudibeat::win::{layered, taskbar};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use windows::Win32::Foundation::*;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
+
+const HOST_CLASS: windows::core::PCWSTR = w!("claudibeat.host");
+const STRIP_CLASS: windows::core::PCWSTR = w!("claudibeat.strip");
 
 struct State {
     renderer: Renderer,
@@ -21,7 +30,8 @@ struct State {
 
 thread_local! {
     static STATE: RefCell<Option<State>> = const { RefCell::new(None) };
-    static CREATED: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static CREATED: Cell<u32> = const { Cell::new(0) };
+    static STRIP: Cell<HWND> = const { Cell::new(HWND(std::ptr::null_mut())) };
 }
 
 fn log(line: String) {
@@ -36,10 +46,42 @@ fn now_ms() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64)
 }
 
-fn redraw(hwnd: HWND) {
-    let Some(bar) = taskbar::primary() else { return };
+/// The strip window, created and embedded if the taskbar has none of ours.
+fn ensure_strip() -> Option<(HWND, HWND)> {
+    let bar = taskbar::primary()?;
+    let current = STRIP.get();
+    // SAFETY: queries and window creation on this thread.
+    unsafe {
+        if !current.is_invalid() && IsWindow(current).as_bool() && GetParent(current).ok() == Some(bar) {
+            return Some((current, bar));
+        }
+        let instance = GetModuleHandleW(None).unwrap_or_default();
+        let hwnd = CreateWindowExW(
+            WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+            STRIP_CLASS,
+            w!("claudibeat"),
+            WS_POPUP,
+            0,
+            0,
+            10,
+            10,
+            None,
+            None,
+            instance,
+            None,
+        )
+        .ok()?;
+        taskbar::embed(hwnd, bar);
+        STRIP.set(hwnd);
+        log(format!("strip created {hwnd:?} parent={:?}", GetParent(hwnd)));
+        Some((hwnd, bar))
+    }
+}
+
+fn redraw() {
+    let Some((hwnd, bar)) = ensure_strip() else { return };
     // Render with the state borrowed, but touch the window only after the
-    // borrow ends: SetWindowPos re-enters the window procedure synchronously.
+    // borrow ends: SetWindowPos re-enters window procedures synchronously.
     let frame = STATE.with_borrow_mut(|s| {
         let s = s.as_mut()?;
         let snap = s.store.read();
@@ -53,7 +95,7 @@ fn redraw(hwnd: HWND) {
             working: c.working,
             mem_percent: mem.percent(),
             mem_alert: mem.alert(),
-            limit: strip_limit(&views).map(|v| (v.remaining, v.left_fraction())),
+            limit: strip_limit(&views).map(|v| (v.used, v.used_fraction())),
         };
         let scale = taskbar::scale(bar);
         let h_dip = taskbar::height(bar) as f32 / scale;
@@ -68,35 +110,45 @@ fn redraw(hwnd: HWND) {
     });
     if let Some(frame) = frame {
         taskbar::place_left(hwnd, bar, frame.width as i32);
-        let r = layered::present(hwnd, &frame, None);
-        // SAFETY: a query on our own window.
-        let parent = unsafe { GetParent(hwnd) };
-        log(format!("redraw {}x{} present={r:?} parent={parent:?} bar={bar:?}", frame.width, frame.height));
+        if let Err(e) = layered::present(hwnd, &frame, None) {
+            log(format!("present failed {e:?}"));
+        }
     }
 }
 
-extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+unsafe extern "system" fn host_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
     let created = CREATED.get();
-    // SAFETY: standard window procedure calls on our own window.
+    // SAFETY: standard window procedure calls.
     unsafe {
         match msg {
             WM_TIMER => {
-                redraw(hwnd);
-                LRESULT(0)
-            }
-            WM_RBUTTONUP => {
-                let _ = DestroyWindow(hwnd);
-                LRESULT(0)
-            }
-            WM_DESTROY => {
-                PostQuitMessage(0);
+                redraw();
                 LRESULT(0)
             }
             m if m == created && created != 0 => {
-                if let Some(bar) = taskbar::primary() {
-                    taskbar::embed(hwnd, bar);
+                log("TaskbarCreated".into());
+                STRIP.set(HWND(std::ptr::null_mut()));
+                redraw();
+                LRESULT(0)
+            }
+            _ => DefWindowProcW(hwnd, msg, wp, lp),
+        }
+    }
+}
+
+unsafe extern "system" fn strip_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+    // SAFETY: standard window procedure calls.
+    unsafe {
+        match msg {
+            WM_RBUTTONUP => {
+                PostQuitMessage(0);
+                LRESULT(0)
+            }
+            WM_DESTROY => {
+                if STRIP.get() == hwnd {
+                    STRIP.set(HWND(std::ptr::null_mut()));
                 }
-                redraw(hwnd);
+                log("strip destroyed".into());
                 LRESULT(0)
             }
             _ => DefWindowProcW(hwnd, msg, wp, lp),
@@ -111,35 +163,27 @@ pub fn run() {
         STATE.set(Some(State { renderer, store: Store::new(Store::default_dir()) }));
         CREATED.set(taskbar::created_msg());
         let instance = GetModuleHandleW(None).unwrap_or_default();
-        let class = WNDCLASSW { lpfnWndProc: Some(wndproc), hInstance: instance.into(), lpszClassName: w!("claudibeat.spike"), hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(), ..Default::default() };
-        RegisterClassW(&class);
-        let Ok(hwnd) = CreateWindowExW(
-            WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
-            w!("claudibeat.spike"),
-            w!("claudibeat"),
-            WS_POPUP,
-            0,
-            0,
-            10,
-            10,
-            None,
-            None,
-            instance,
-            None,
-        ) else {
-            log(format!("create failed {:?}", windows::core::Error::from_win32()));
+        let cursor = LoadCursorW(None, IDC_ARROW).unwrap_or_default();
+        let procs: [(windows::core::PCWSTR, WNDPROC); 2] = [(HOST_CLASS, Some(host_proc)), (STRIP_CLASS, Some(strip_proc))];
+        for (class, proc_) in procs {
+            let wc = WNDCLASSW { lpfnWndProc: proc_, hInstance: instance.into(), lpszClassName: class, hCursor: cursor, ..Default::default() };
+            RegisterClassW(&wc);
+        }
+        // A hidden top-level window: it never shows, but it hears broadcasts.
+        let Ok(host) = CreateWindowExW(WS_EX_TOOLWINDOW, HOST_CLASS, w!("claudibeat host"), WS_POPUP, 0, 0, 0, 0, None, None, instance, None) else {
             return;
         };
-        log(format!("created {hwnd:?}"));
-        let Some(bar) = taskbar::primary() else { log("no taskbar".into()); return };
-        taskbar::embed(hwnd, bar);
-        log(format!("embedded parent={:?}", GetParent(hwnd)));
-        redraw(hwnd);
-        SetTimer(hwnd, 1, 2_000, None);
+        redraw();
+        SetTimer(host, 1, 2_000, None);
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, None, 0, 0).as_bool() {
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
+        let strip = STRIP.get();
+        if !strip.is_invalid() {
+            let _ = DestroyWindow(strip);
+        }
+        let _ = DestroyWindow(host);
     }
 }
