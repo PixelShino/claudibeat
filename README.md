@@ -11,7 +11,7 @@
 [![Windows 11](https://img.shields.io/badge/Windows-11-1d1d1d?style=flat-square&logo=windows11&logoColor=white)](#requirements)
 [![Rust](https://img.shields.io/badge/Rust-stable-1d1d1d?style=flat-square&logo=rust&logoColor=white)](#build)
 [![License: MIT](https://img.shields.io/badge/license-MIT-1d1d1d?style=flat-square)](LICENSE)
-[![exe size](https://img.shields.io/badge/exe-737_KiB-5d5d5d?style=flat-square)](#footprint)
+[![exe size](https://img.shields.io/badge/exe-743_KiB-5d5d5d?style=flat-square)](#footprint)
 [![memory](https://img.shields.io/badge/memory-9.6_MB-5d5d5d?style=flat-square)](#footprint)
 [![network: none](https://img.shields.io/badge/network-none-5d5d5d?style=flat-square)](#privacy)
 
@@ -52,6 +52,10 @@ Subagents don't count. One chat tab is one session, however many helpers it spaw
 
 <p align="center"><img src="docs/media/en/settings.png" width="420" alt="The settings page in the sessions window: do not disturb, notification sound, start with Windows, and English or Russian"></p>
 
+**Light or dark, like the taskbar.** claudibeat follows "Choose your default Windows mode" and switches the moment you do: white counters on a dark taskbar, dark cards above it.
+
+<p align="center"><img src="docs/media/en/dark.png" width="420" alt="The sessions window and the strip in Windows dark mode: light text on dark cards, the waiting counter as a light pill"></p>
+
 **English or Russian.** English is the default. Pick **Русский** at the bottom of the sessions window, in the settings or in the right-click menu; the choice is remembered.
 
 ## Requirements
@@ -67,7 +71,7 @@ cargo +stable-x86_64-pc-windows-gnu build --release
 .\target\release\claudibeat.exe
 ```
 
-The GNU toolchain needs no Visual Studio; the MSVC toolchain should work too but isn't tested yet. There's no installer and no runtime: one 737 KiB executable. A second copy refuses to start.
+The GNU toolchain needs no Visual Studio; the MSVC toolchain should work too but isn't tested yet. There's no installer and no runtime: one 743 KiB executable. A second copy refuses to start.
 
 ## Use
 
@@ -76,7 +80,7 @@ The GNU toolchain needs no Visual Studio; the MSVC toolchain should work too but
 - **The gear** in the sessions window opens the same settings without the menu.
 - Settings live in `%APPDATA%\claudibeat\settings.json`. Autostart is a single `claudibeat` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
 - `claudibeat.exe --quit` closes a running copy the way its Quit item does and waits for it to exit. Use it before replacing the executable rather than killing the process: after a forced kill, Explorer has refused the new strip for several minutes. `taskkill` without `/F` works the same way.
-- `claudibeat.exe --render <dir> [--lang en|ru]` draws every surface to PNG with invented demo sessions (that's where the pictures above come from). `claudibeat.exe --dump <file>` writes today's counts, memory and limits as JSON, handy for checking the numbers without any window.
+- `claudibeat.exe --render <dir> [--lang en|ru] [--theme light|dark]` draws every surface to PNG with invented demo sessions (that's where the pictures above come from). `claudibeat.exe --dump <file>` writes today's counts, memory and limits as JSON, handy for checking the numbers without any window.
 
 ## How it works
 
@@ -100,7 +104,7 @@ Measured on the author's machine (16 logical CPUs, 32 GB RAM) over three minutes
 
 | | |
 |---|---|
-| Executable | 737 KiB (`lto`, `strip`, `panic = "abort"`) |
+| Executable | 743 KiB (`lto`, `strip`, `panic = "abort"`) |
 | Memory, private working set | 9.6 MB |
 | CPU | 0.07% of the machine on average (1.1% of one core) |
 | Back after an Explorer restart | 0.97 s |

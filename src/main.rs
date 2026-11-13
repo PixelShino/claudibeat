@@ -16,7 +16,11 @@ fn main() {
             Some("ru") => claudibeat::text::Lang::Ru,
             _ => claudibeat::text::Lang::En,
         };
-        let code = claudibeat::cli::render_samples(&dir, value("--bg").as_deref(), lang).map_or(1, |()| 0);
+        let theme = match args.iter().position(|a| a == "--theme").and_then(|i| args.get(i + 1)).map(String::as_str) {
+            Some("dark") => claudibeat::render::Theme::Dark,
+            _ => claudibeat::render::Theme::Light,
+        };
+        let code = claudibeat::cli::render_samples(&dir, value("--bg").as_deref(), lang, theme).map_or(1, |()| 0);
         std::process::exit(code);
     }
     if args.iter().any(|a| a == "--quit") {

@@ -2,7 +2,7 @@
 //! `.tip` in `docs/mockups/base.css`.
 
 use super::icons::{Icon, icon};
-use super::{Color, HOVER, INK, MUTED, Painter, Rect, SURFACE, TextStyle, Weight};
+use super::{Color, EDGE, HOVER, INK, MUTED, Painter, Rect, SURFACE, TextStyle, Weight};
 use crate::merge::{Row, open_target};
 use crate::notify::{ToastEvent, ToastKind};
 use crate::text::{Lang, ago, quote, title_done_batch, title_more_waiting};
@@ -149,7 +149,7 @@ pub fn paint_tooltip(p: &Painter, text: &str) {
         let g = 8.0 - 2.0 * i as f32;
         p.fill_round(Rect::new(card.x - g / 2.0, card.y + 2.0 - g / 2.0, card.w + g, card.h + g), 5.0 + g / 2.0, Color(0x0500_0000));
     }
-    p.fill_round(card, 5.0, Color(0xFFFB_FBFB));
-    p.stroke_round_rect(Rect::new(card.x - 0.5, card.y - 0.5, card.w + 1.0, card.h + 1.0), 5.5, 1.0, Color(0x1400_0000));
+    p.fill_round(card, 5.0, SURFACE);
+    p.stroke_round_rect(Rect::new(card.x - 0.5, card.y - 0.5, card.w + 1.0, card.h + 1.0), 5.5, 1.0, EDGE);
     p.text(text, card.x + 9.0, card.y + 5.0, &TIP);
 }

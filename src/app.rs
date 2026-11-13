@@ -242,6 +242,8 @@ impl App {
         self.rows = merge_rows(&snap.index, &snap.files, &snap.acks, now);
         self.limits = limit_views(snap.account.as_ref(), now);
         self.busy = shell::is_busy();
+        // WM_SETTINGCHANGE brings a switch at once; this catches a missed one.
+        self.sync_theme();
 
         let events = self.notifier.observe(&self.rows, now);
         let needing: HashMap<String, SessionState> = self.rows.iter().filter(|r| r.needs_you).map(|r| (r.key.clone(), r.state)).collect();
@@ -269,6 +271,19 @@ impl App {
         if self.toast_hover_close.is_some_and(|i| i >= self.stack.items.len()) {
             self.toast_hover_close = None;
         }
+    }
+
+    /// Follow the taskbar's light or dark mode; on a change, every surface
+    /// is drawn again. True when it changed.
+    fn sync_theme(&mut self) -> bool {
+        let theme = shell::system_theme();
+        if theme == self.renderer.theme() {
+            return false;
+        }
+        self.renderer.set_theme(theme);
+        self.strip_key = None;
+        self.toast_key = None;
+        true
     }
 
     fn prefs(&self) -> Prefs {
@@ -808,6 +823,7 @@ unsafe extern "system" fn host_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
             SetTimer(hwnd, T_SOON, SOON_MS, None);
         },
         WM_DISPLAYCHANGE | WM_SETTINGCHANGE | WM_DPICHANGED => with_app(|a| {
+            a.sync_theme();
             a.strip_key = None;
             a.draw_all();
         }),

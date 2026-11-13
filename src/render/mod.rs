@@ -40,6 +40,48 @@ pub const HOVER: Color = Color(0x0D00_0000);
 pub const TRACK: Color = Color(0x2400_0000);
 pub const SURFACE: Color = Color(0xFFF9_F9F9);
 pub const HAIR: Color = Color(0x1700_0000);
+/// The hairline ring round a floating card.
+pub const EDGE: Color = Color(0x1400_0000);
+
+/// Light or dark, as the taskbar is. Every surface is written in the light
+/// palette above; the dark theme swaps each grey for its partner at paint
+/// time, so layouts and painters never think about it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Theme {
+    #[default]
+    Light,
+    Dark,
+}
+
+impl Theme {
+    /// The colour actually painted for a colour of the design.
+    pub fn resolve(self, c: Color) -> Color {
+        if self == Theme::Light {
+            return c;
+        }
+        // After Windows 11 dark: text F3 / C5 / 9D on a 2C card, the
+        // waiting pill turns light, overlays turn from black to white.
+        match c {
+            INK => Color(0xFFF3_F3F3),
+            MUTED => Color(0xFFC5_C5C5),
+            TIME => Color(0xFF9D_9D9D),
+            PILL => Color(0xFFF0_F0F0),
+            PILL_INK => Color(0xFF1D_1D1D),
+            HOVER => Color(0x12FF_FFFF),
+            TRACK => Color(0x30FF_FFFF),
+            SURFACE => Color(0xFF2C_2C2C),
+            HAIR => Color(0x17FF_FFFF),
+            EDGE => Color(0x1AFF_FFFF),
+            other => other,
+        }
+    }
+
+    /// From the `SystemUsesLightTheme` registry value (0 means a dark
+    /// taskbar); light when the value is missing.
+    pub fn from_system_value(value: Option<u32>) -> Theme {
+        if value == Some(0) { Theme::Dark } else { Theme::Light }
+    }
+}
 
 /// Opacity of a counter at zero: present, but quiet.
 pub const ZERO_OPACITY: f32 = 0.42;
@@ -103,6 +145,7 @@ pub struct Renderer {
     dwrite: IDWriteFactory,
     wic: IWICImagingFactory,
     family: HSTRING,
+    theme: Cell<Theme>,
 }
 
 impl Renderer {
@@ -114,8 +157,17 @@ impl Renderer {
             let dwrite: IDWriteFactory = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED)?;
             let wic: IWICImagingFactory = CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER)?;
             let family = pick_family(&dwrite);
-            Ok(Renderer { d2d, dwrite, wic, family })
+            Ok(Renderer { d2d, dwrite, wic, family, theme: Cell::new(Theme::Light) })
         }
+    }
+
+    pub fn theme(&self) -> Theme {
+        self.theme.get()
+    }
+
+    /// Paint from now on in `theme`.
+    pub fn set_theme(&self, theme: Theme) {
+        self.theme.set(theme);
     }
 
     /// Draw `w_dip × h_dip` at `scale` physical pixels per DIP.
@@ -232,6 +284,7 @@ impl Painter<'_> {
     }
 
     fn brush(&self, color: Color) -> Option<ID2D1SolidColorBrush> {
+        let color = self.r.theme.get().resolve(color);
         // SAFETY: the render target is in a BeginDraw/EndDraw pair.
         unsafe { self.rt.CreateSolidColorBrush(&color.d2d(self.opacity.get()), None).ok() }
     }
@@ -393,7 +446,7 @@ impl Painter<'_> {
             self.fill_round(r, radius + grow / 2.0, Color(0x0300_0000));
         }
         let ring = Rect::new(card.x - 0.5, card.y - 0.5, card.w + 1.0, card.h + 1.0);
-        self.stroke_round_rect(ring, radius + 0.5, 1.0, Color(0x1400_0000));
+        self.stroke_round_rect(ring, radius + 0.5, 1.0, EDGE);
     }
 
     /// Lay out `text` on one line (ellipsis past `max_w`) or wrapped (`wrap`).

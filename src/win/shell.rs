@@ -1,4 +1,4 @@
-//! Opening chats and starting with Windows.
+//! Opening chats, starting with Windows, and the taskbar's colour mode.
 
 use windows::Win32::Foundation::ERROR_SUCCESS;
 use windows::Win32::System::Registry::*;
@@ -52,4 +52,25 @@ pub fn autostart_set(on: bool) {
         }
         let _ = RegCloseKey(key);
     }
+}
+
+/// Light or dark, as Windows paints the taskbar ("Choose your default
+/// Windows mode"). The strip sits on the taskbar and the popups belong to
+/// the shell, so they all follow this rather than the apps' mode.
+pub fn system_theme() -> crate::render::Theme {
+    let mut value = 0u32;
+    let mut size = std::mem::size_of::<u32>() as u32;
+    // SAFETY: reads one DWORD into a local of the declared size.
+    let read = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
+            w!("SystemUsesLightTheme"),
+            RRF_RT_REG_DWORD,
+            None,
+            Some((&mut value as *mut u32).cast()),
+            Some(&mut size),
+        )
+    };
+    crate::render::Theme::from_system_value((read == ERROR_SUCCESS).then_some(value))
 }

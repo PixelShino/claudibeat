@@ -1,4 +1,4 @@
-//! `claudibeat --render <dir> [--bg <png>] [--lang en|ru]`: every surface
+//! `claudibeat --render <dir> [--bg <png>] [--lang en|ru] [--theme light|dark]`: every surface
 //! drawn to PNG with demo data, to compare against the mock-ups and to make
 //! the README pictures without touching the desktop.
 
@@ -10,7 +10,7 @@ use crate::notify::{ToastEvent, ToastKind};
 use crate::render::flyout::{FlyoutHit, FlyoutModel, FlyoutView, Prefs, layout_flyout, paint_flyout};
 use crate::render::strip::{STRIP_H, StripItem, StripModel, layout_strip, paint_strip};
 use crate::render::toast::{layout_toast, paint_toast, paint_tooltip, toast_model, tooltip_size};
-use crate::render::{Color, Painter, Rect, Renderer, TRANSPARENT};
+use crate::render::{Color, Painter, Rect, Renderer, TRANSPARENT, Theme};
 use crate::text::Lang;
 use std::path::Path;
 
@@ -95,12 +95,17 @@ fn io_err(e: std::io::Error) -> windows::core::Error {
 }
 
 /// A slice of desktop with the taskbar at the bottom and the strip on it.
-fn scene(p: &Painter, h: f32, bg: Option<&Path>, strip: &StripModel, hover: Option<StripItem>) {
-    p.fill_rect(Rect::new(0.0, 0.0, CANVAS_W, h), Color(0xFFD2_D4D8));
+fn scene(p: &Painter, h: f32, bg: Option<&Path>, strip: &StripModel, hover: Option<StripItem>, theme: Theme) {
+    // A wallpaper-grey desktop over the taskbar, light or dark as Windows draws it.
+    let (desk, bar) = match theme {
+        Theme::Light => (Color(0xFFD2_D4D8), Color(0xFFEE_EEF0)),
+        Theme::Dark => (Color(0xFF3A_3D42), Color(0xFF1C_1C1C)),
+    };
+    p.fill_rect(Rect::new(0.0, 0.0, CANVAS_W, h), desk);
     let bar_y = h - STRIP_H;
     match bg {
         Some(bg) => p.translate(0.0, bar_y, |p| p.image(bg, Rect::new(0.0, 0.0, CANVAS_W, STRIP_H))),
-        None => p.fill_rect(Rect::new(0.0, bar_y, CANVAS_W, STRIP_H), Color(0xFFEE_EEF0)),
+        None => p.fill_rect(Rect::new(0.0, bar_y, CANVAS_W, STRIP_H), bar),
     }
     p.translate(0.0, bar_y, |p| {
         let l = layout_strip(strip, p);
@@ -108,9 +113,10 @@ fn scene(p: &Painter, h: f32, bg: Option<&Path>, strip: &StripModel, hover: Opti
     });
 }
 
-pub fn render_samples(dir: &Path, bg: Option<&Path>, lang: Lang) -> windows::core::Result<()> {
+pub fn render_samples(dir: &Path, bg: Option<&Path>, lang: Lang, theme: Theme) -> windows::core::Result<()> {
     std::fs::create_dir_all(dir).map_err(io_err)?;
     let r = Renderer::new()?;
+    r.set_theme(theme);
     for s in strip_samples() {
         let frame = r.render(CANVAS_W, STRIP_H, SCALE, TRANSPARENT, |p| {
             if let Some(bg) = bg {
@@ -152,7 +158,7 @@ pub fn render_samples(dir: &Path, bg: Option<&Path>, lang: Lang) -> windows::cor
         })?;
         let h = size.1 + STRIP_H;
         let frame = r.render(CANVAS_W, h, SCALE, TRANSPARENT, |p| {
-            scene(p, h, bg, &strip, None);
+            scene(p, h, bg, &strip, None, theme);
             let l = layout_flyout(&m, p, max_h);
             p.translate(8.0 - l.card.x, h - STRIP_H - 12.0 - l.card.bottom(), |p| {
                 paint_flyout(p, &l, &m, hover.as_ref(), if name == "flyout-scroll" { 40.0 } else { 0.0 });
@@ -172,7 +178,7 @@ pub fn render_samples(dir: &Path, bg: Option<&Path>, lang: Lang) -> windows::cor
     for (name, events, data) in toasts {
         let h = 420.0;
         let frame = r.render(CANVAS_W, h, SCALE, TRANSPARENT, |p| {
-            scene(p, h, bg, &strip, None);
+            scene(p, h, bg, &strip, None, theme);
             // Lay out from the strip upwards, then paint top-down as the app
             // does, so no card's shadow falls on the card below it.
             let mut bottom = h - STRIP_H - 12.0;
@@ -193,7 +199,7 @@ pub fn render_samples(dir: &Path, bg: Option<&Path>, lang: Lang) -> windows::cor
 
     let h = 120.0;
     let frame = r.render(CANVAS_W, h, SCALE, TRANSPARENT, |p| {
-        scene(p, h, bg, &strip, Some(StripItem::Working));
+        scene(p, h, bg, &strip, Some(StripItem::Working), theme);
         let text = crate::text::tip_working(lang, 4);
         let (_, th) = tooltip_size(p, &text);
         p.translate(70.0, h - STRIP_H - th + 2.0, |p| paint_tooltip(p, &text));

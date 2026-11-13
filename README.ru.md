@@ -11,7 +11,7 @@
 [![Windows 11](https://img.shields.io/badge/Windows-11-1d1d1d?style=flat-square&logo=windows11&logoColor=white)](#требования)
 [![Rust](https://img.shields.io/badge/Rust-stable-1d1d1d?style=flat-square&logo=rust&logoColor=white)](#сборка)
 [![Лицензия: MIT](https://img.shields.io/badge/license-MIT-1d1d1d?style=flat-square)](LICENSE)
-[![размер exe](https://img.shields.io/badge/exe-737_KiB-5d5d5d?style=flat-square)](#сколько-весит)
+[![размер exe](https://img.shields.io/badge/exe-743_KiB-5d5d5d?style=flat-square)](#сколько-весит)
 [![память](https://img.shields.io/badge/memory-9.6_MB-5d5d5d?style=flat-square)](#сколько-весит)
 [![сеть: нет](https://img.shields.io/badge/network-none-5d5d5d?style=flat-square)](#приватность)
 
@@ -52,6 +52,10 @@
 
 <p align="center"><img src="docs/media/ru/settings.png" width="420" alt="Настройки в окне сессий: «Не беспокоить», звук уведомлений, запуск вместе с Windows и выбор языка"></p>
 
+**Светлая или тёмная, как панель задач.** claudibeat следует настройке «Режим Windows по умолчанию» и переключается сразу вместе с ней: на тёмной панели счётчики белые, окна над ней тёмные.
+
+<p align="center"><img src="docs/media/ru/dark.png" width="420" alt="Окно сессий и полоса в тёмном режиме Windows: светлый текст на тёмных карточках, счётчик ждущих стал светлой плашкой"></p>
+
 **Русский или английский.** По умолчанию интерфейс английский. **Русский** выбирается внизу окна сессий, в настройках или в меню по правому клику, выбор запоминается.
 
 ## Требования
@@ -67,7 +71,7 @@ cargo +stable-x86_64-pc-windows-gnu build --release
 .\target\release\claudibeat.exe
 ```
 
-Набору GNU не нужна Visual Studio; MSVC тоже должен работать, но пока не проверялся. Установщика и рантайма нет: один исполняемый файл на 737 КиБ. Второй экземпляр не запускается.
+Набору GNU не нужна Visual Studio; MSVC тоже должен работать, но пока не проверялся. Установщика и рантайма нет: один исполняемый файл на 743 КиБ. Второй экземпляр не запускается.
 
 ## Как пользоваться
 
@@ -76,7 +80,7 @@ cargo +stable-x86_64-pc-windows-gnu build --release
 - **Шестерёнка** в окне сессий открывает те же настройки без меню.
 - Настройки лежат в `%APPDATA%\claudibeat\settings.json`. Для автозапуска хватает одного значения `claudibeat` в `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
 - `claudibeat.exe --quit` закрывает запущенную копию так же, как пункт «Выход», и ждёт, пока она завершится. Запускайте его перед заменой exe вместо того, чтобы убивать процесс: после принудительного завершения Explorer по нескольку минут не принимал новую полосу. `taskkill` без `/F` закрывает так же мягко.
-- `claudibeat.exe --render <папка> [--lang en|ru]` рисует все окна в PNG на выдуманных демо-сессиях (картинки выше сделаны так). `claudibeat.exe --dump <файл>` пишет в JSON текущие счётчики, память и лимиты, чтобы сверить числа без окон.
+- `claudibeat.exe --render <папка> [--lang en|ru] [--theme light|dark]` рисует все окна в PNG на выдуманных демо-сессиях (картинки выше сделаны так). `claudibeat.exe --dump <файл>` пишет в JSON текущие счётчики, память и лимиты, чтобы сверить числа без окон.
 
 ## Как это работает
 
@@ -100,7 +104,7 @@ cargo +stable-x86_64-pc-windows-gnu build --release
 
 | | |
 |---|---|
-| Исполняемый файл | 737 КиБ (`lto`, `strip`, `panic = "abort"`) |
+| Исполняемый файл | 743 КиБ (`lto`, `strip`, `panic = "abort"`) |
 | Память, частный рабочий набор | 9,6 МБ |
 | Процессор | в среднем 0,07 % всей машины (1,1 % одного ядра) |
 | Возврат после перезапуска Explorer | 0,97 с |
