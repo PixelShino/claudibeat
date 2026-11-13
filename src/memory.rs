@@ -100,23 +100,29 @@ fn processes() -> Vec<Proc> {
     const SYSTEM_PROCESS_INFORMATION: SYSTEM_INFORMATION_CLASS = SYSTEM_INFORMATION_CLASS(5);
     const STATUS_INFO_LENGTH_MISMATCH: i32 = 0xC000_0004_u32 as i32;
 
-    let mut buf: Vec<u64> = vec![0; 1 << 17]; // 1 MiB, 8-byte aligned
-    loop {
-        let mut needed = 0u32;
-        let bytes = (buf.len() * 8) as u32;
-        // SAFETY: the buffer is writable for `bytes` bytes and outlives the call.
-        let status = unsafe { NtQuerySystemInformation(SYSTEM_PROCESS_INFORMATION, buf.as_mut_ptr().cast(), bytes, &mut needed) };
-        if status.0 == STATUS_INFO_LENGTH_MISMATCH {
-            buf = vec![0; (needed as usize / 8) * 2 + 4096];
-            continue;
-        }
-        if status.is_err() {
-            return Vec::new();
-        }
-        break;
+    thread_local! {
+        // Kept between samples and sized from the last answer, so the kernel
+        // walks every process and thread once per sample, not twice.
+        static BUF: std::cell::RefCell<Vec<u64>> = std::cell::RefCell::new(vec![0; 1 << 17]);
     }
-    // SAFETY: the kernel filled the buffer with a chain of SYSTEM_PROCESS_INFORMATION records.
-    unsafe { parse_records(buf.as_ptr().cast(), buf.len() * 8) }
+    BUF.with_borrow_mut(|buf| {
+        loop {
+            let mut needed = 0u32;
+            let bytes = (buf.len() * 8) as u32;
+            // SAFETY: the buffer is writable for `bytes` bytes and outlives the call.
+            let status = unsafe { NtQuerySystemInformation(SYSTEM_PROCESS_INFORMATION, buf.as_mut_ptr().cast(), bytes, &mut needed) };
+            if status.0 == STATUS_INFO_LENGTH_MISMATCH {
+                *buf = vec![0; (needed as usize / 8) * 3 / 2 + 4096];
+                continue;
+            }
+            if status.is_err() {
+                return Vec::new();
+            }
+            break;
+        }
+        // SAFETY: the kernel filled the buffer with a chain of SYSTEM_PROCESS_INFORMATION records.
+        unsafe { parse_records(buf.as_ptr().cast(), buf.len() * 8) }
+    })
 }
 
 /// Offsets of the x64 `SYSTEM_PROCESS_INFORMATION` record (see phnt `ntexapi.h`).

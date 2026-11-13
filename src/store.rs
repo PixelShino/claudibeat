@@ -26,10 +26,17 @@ pub struct Snapshot {
     pub account: Option<AccountFile>,
 }
 
+/// Size and modification time: a file whose stamp has not moved is not read again.
+type Stamp = (u64, Option<std::time::SystemTime>);
+
+fn stamp_of(meta: &fs::Metadata) -> Stamp {
+    (meta.len(), meta.modified().ok())
+}
+
 pub struct Store {
     dir: PathBuf,
-    /// Raw text of the last good read of each path.
-    last_good: HashMap<PathBuf, String>,
+    /// Raw text of the last good read of each path, with the file's stamp then.
+    last_good: HashMap<PathBuf, (Stamp, String)>,
 }
 
 impl Store {
@@ -48,8 +55,10 @@ impl Store {
     }
 
     pub fn read(&mut self) -> Snapshot {
-        let index = self.load::<IndexFile>(&self.dir.join("index.json")).map(|f| f.sessions).unwrap_or_default();
-        let account = self.load::<AccountFile>(&self.dir.join("account.json"));
+        let index_path = self.dir.join("index.json");
+        let account_path = self.dir.join("account.json");
+        let index = self.load::<IndexFile>(&index_path, fs::metadata(&index_path).ok().map(|m| stamp_of(&m))).map(|f| f.sessions).unwrap_or_default();
+        let account = self.load::<AccountFile>(&account_path, fs::metadata(&account_path).ok().map(|m| stamp_of(&m)));
         let files = self.load_dir::<SessionFile>("sessions").into_iter().map(|(_, f)| f).collect();
         let acks = self.load_dir::<AckFile>("acks").into_iter().collect();
         Snapshot { index, files, acks, account }
@@ -71,29 +80,36 @@ impl Store {
 
     fn load_dir<T: DeserializeOwned + Versioned>(&mut self, sub: &str) -> Vec<(String, T)> {
         let Ok(entries) = fs::read_dir(self.dir.join(sub)) else { return Vec::new() };
-        let mut paths: Vec<PathBuf> = entries
-            .filter_map(|e| e.ok().map(|e| e.path()))
-            .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        // On Windows the directory listing already carries size and time,
+        // so stamping costs no extra call per file.
+        let mut paths: Vec<(PathBuf, Option<Stamp>)> = entries
+            .filter_map(|e| e.ok().map(|e| (e.path(), e.metadata().ok().map(|m| stamp_of(&m)))))
+            .filter(|(p, _)| p.extension().is_some_and(|x| x == "json"))
             .collect();
-        paths.sort();
-        let present: Vec<PathBuf> = paths.clone();
+        paths.sort_by(|a, b| a.0.cmp(&b.0));
+        let present: Vec<PathBuf> = paths.iter().map(|(p, _)| p.clone()).collect();
         // Forget files that are gone, so a deleted file does not live on.
         let prefix = self.dir.join(sub);
         self.last_good.retain(|p, _| !p.starts_with(&prefix) || present.contains(p));
         paths
             .into_iter()
-            .filter_map(|p| {
+            .filter_map(|(p, stamp)| {
                 let name = p.file_stem()?.to_string_lossy().into_owned();
-                self.load::<T>(&p).map(|v| (name, v))
+                self.load::<T>(&p, stamp).map(|v| (name, v))
             })
             .collect()
     }
 
-    fn load<T: DeserializeOwned + Versioned>(&mut self, path: &Path) -> Option<T> {
+    fn load<T: DeserializeOwned + Versioned>(&mut self, path: &Path, stamp: Option<Stamp>) -> Option<T> {
+        if let (Some(stamp), Some((seen, text))) = (stamp, self.last_good.get(path))
+            && stamp == *seen
+        {
+            return parse::<T>(text);
+        }
         match fs::read_to_string(path) {
             Ok(text) => {
                 if let Some(value) = parse::<T>(&text) {
-                    self.last_good.insert(path.to_path_buf(), text);
+                    self.last_good.insert(path.to_path_buf(), (stamp.unwrap_or_default(), text));
                     return Some(value);
                 }
             }
@@ -105,7 +121,7 @@ impl Store {
             }
             Err(_) => {}
         }
-        self.last_good.get(path).and_then(|text| parse::<T>(text))
+        self.last_good.get(path).and_then(|(_, text)| parse::<T>(text))
     }
 }
 
