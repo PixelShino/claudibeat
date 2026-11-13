@@ -812,6 +812,19 @@ unsafe extern "system" fn host_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
             a.draw_all();
         }),
         m if m == created && created != 0 => with_app(App::on_taskbar_created),
+        // `taskkill` without /F, or anyone asking politely: leave the way the
+        // menu's Quit does, so the strip is taken out of the taskbar before
+        // the process ends. Killing the process instead was followed by
+        // Explorer refusing child windows for minutes.
+        // SAFETY: ends our own message loop.
+        WM_CLOSE => unsafe { PostQuitMessage(0) },
+        // Signing out or shutting down: Windows ends the process right after
+        // this returns, so take the strip out of the taskbar now.
+        WM_ENDSESSION if wp.0 != 0 => APP.with(|cell| {
+            if let Ok(mut app) = cell.try_borrow_mut() {
+                *app = None;
+            }
+        }),
         // SAFETY: default handling for our own window.
         _ => return unsafe { DefWindowProcW(hwnd, msg, wp, lp) },
     }
@@ -854,6 +867,27 @@ fn watch(dir: PathBuf, host: HWND) {
             std::thread::sleep(std::time::Duration::from_secs(5));
         }
     });
+}
+
+/// Ask the running claudibeat to quit and wait up to `timeout_ms` for its
+/// process to end. `true` once none runs.
+///
+/// `WM_QUIT` goes to its UI thread, so it leaves exactly as through the
+/// menu's Quit (and builds older than the `WM_CLOSE` handling quit too).
+pub fn quit_running(timeout_ms: u32) -> bool {
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject};
+    // SAFETY: a lookup by class name, a posted message, and a wait on a
+    // process handle that is closed before returning.
+    unsafe {
+        let Some(host) = FindWindowW(HOST_CLASS, None).ok().filter(|h| !h.is_invalid()) else { return true };
+        let mut pid = 0;
+        let thread = GetWindowThreadProcessId(host, Some(&mut pid));
+        let Ok(process) = OpenProcess(PROCESS_SYNCHRONIZE, false, pid) else { return false };
+        let asked = PostThreadMessageW(thread, WM_QUIT, WPARAM(0), LPARAM(0)).is_ok();
+        let ended = asked && WaitForSingleObject(process, timeout_ms) == WAIT_OBJECT_0;
+        let _ = CloseHandle(process);
+        ended
+    }
 }
 
 /// Hold `Local\claudibeat` for the life of the process; `None` when another

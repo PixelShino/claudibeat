@@ -75,6 +75,7 @@ The GNU toolchain needs no Visual Studio; the MSVC toolchain should work too but
 - **Right click** the strip: Mark all as seen, Do not disturb, Notification sound, Start with Windows (off by default), Language, Quit.
 - **The gear** in the sessions window opens the same settings without the menu.
 - Settings live in `%APPDATA%\claudibeat\settings.json`. Autostart is a single `claudibeat` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+- `claudibeat.exe --quit` closes a running copy the way its Quit item does and waits for it to exit. Use it before replacing the executable: killing the process leaves Explorer with a dead child window in its taskbar, and Explorer has refused new ones for minutes after that.
 - `claudibeat.exe --render <dir> [--lang en|ru]` draws every surface to PNG with invented demo sessions (that's where the pictures above come from). `claudibeat.exe --dump <file>` writes today's counts, memory and limits as JSON, handy for checking the numbers without any window.
 
 ## How it works

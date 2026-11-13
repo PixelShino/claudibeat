@@ -19,6 +19,9 @@ fn main() {
         let code = claudibeat::cli::render_samples(&dir, value("--bg").as_deref(), lang).map_or(1, |()| 0);
         std::process::exit(code);
     }
+    if args.iter().any(|a| a == "--quit") {
+        std::process::exit(if claudibeat::app::quit_running(10_000) { 0 } else { 1 });
+    }
     if let Some(file) = value("--dump") {
         std::process::exit(claudibeat::cli::dump(&file).map_or(1, |()| 0));
     }
