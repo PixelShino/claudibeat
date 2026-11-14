@@ -181,11 +181,14 @@ pub struct App {
     toast_hover_close: Option<usize>,
     toast_timer: bool,
     toast_key: Option<ToastKey>,
+    /// Whether the logon task exists; asking means running `schtasks`.
+    autostart: bool,
 }
 
 impl App {
     fn new(instance: HINSTANCE, host: HWND) -> Option<App> {
         let settings_path = Settings::default_path();
+        shell::migrate_autostart();
         Some(App {
             instance,
             host,
@@ -219,6 +222,7 @@ impl App {
             toast_hover_close: None,
             toast_timer: false,
             toast_key: None,
+            autostart: shell::autostart_get(),
         })
     }
 
@@ -287,7 +291,7 @@ impl App {
     }
 
     fn prefs(&self) -> Prefs {
-        Prefs { dnd: self.settings.dnd, sound: self.settings.sound, autostart: shell::autostart_get() }
+        Prefs { dnd: self.settings.dnd, sound: self.settings.sound, autostart: self.autostart }
     }
 
     fn strip_model(&self) -> StripModel {
@@ -510,7 +514,8 @@ impl App {
                 self.redraw_flyout();
             }
             Action::ToggleAutostart => {
-                shell::autostart_set(!shell::autostart_get());
+                shell::autostart_set(!self.autostart);
+                self.autostart = shell::autostart_get();
                 self.redraw_flyout();
             }
             Action::ToggleDnd => {

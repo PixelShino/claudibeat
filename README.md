@@ -11,7 +11,7 @@
 [![Windows 11](https://img.shields.io/badge/Windows-11-1d1d1d?style=flat-square&logo=windows11&logoColor=white)](#requirements)
 [![Rust](https://img.shields.io/badge/Rust-stable-1d1d1d?style=flat-square&logo=rust&logoColor=white)](#build)
 [![License: MIT](https://img.shields.io/badge/license-MIT-1d1d1d?style=flat-square)](LICENSE)
-[![exe size](https://img.shields.io/badge/exe-743_KiB-5d5d5d?style=flat-square)](#footprint)
+[![exe size](https://img.shields.io/badge/exe-801_KiB-5d5d5d?style=flat-square)](#footprint)
 [![memory](https://img.shields.io/badge/memory-9.6_MB-5d5d5d?style=flat-square)](#footprint)
 [![network: none](https://img.shields.io/badge/network-none-5d5d5d?style=flat-square)](#privacy)
 
@@ -71,14 +71,14 @@ cargo +stable-x86_64-pc-windows-gnu build --release
 .\target\release\claudibeat.exe
 ```
 
-The GNU toolchain needs no Visual Studio; the MSVC toolchain should work too but isn't tested yet. There's no installer and no runtime: one 743 KiB executable. A second copy refuses to start.
+The GNU toolchain needs no Visual Studio; the MSVC toolchain should work too but isn't tested yet. There's no installer and no runtime: one 801 KiB executable. A second copy refuses to start.
 
 ## Use
 
 - **Left click** a counter: open the one chat, or the sessions window.
 - **Right click** the strip: Mark all as seen, Do not disturb, Notification sound, Start with Windows (off by default), Language, Quit.
 - **The gear** in the sessions window opens the same settings without the menu.
-- Settings live in `%APPDATA%\claudibeat\settings.json`. Autostart is a single `claudibeat` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+- Settings live in `%APPDATA%\claudibeat\settings.json`. Start with Windows is a Task Scheduler task named `claudibeat` that runs at your sign-in, on your desktop and without elevation. Not the `Run` key: on one Windows 11 machine Explorer silently skipped claudibeat there at every sign-in. Builds that used the `Run` key move the setting over by themselves.
 - `claudibeat.exe --quit` closes a running copy the way its Quit item does and waits for it to exit. Use it before replacing the executable rather than killing the process: after a forced kill, Explorer has refused the new strip for several minutes. `taskkill` without `/F` works the same way.
 - `claudibeat.exe --render <dir> [--lang en|ru] [--theme light|dark]` draws every surface to PNG with invented demo sessions (that's where the pictures above come from). `claudibeat.exe --dump <file>` writes today's counts, memory and limits as JSON, handy for checking the numbers without any window.
 
@@ -104,7 +104,7 @@ Measured on the author's machine (16 logical CPUs, 32 GB RAM) over three minutes
 
 | | |
 |---|---|
-| Executable | 743 KiB (`lto`, `strip`, `panic = "abort"`) |
+| Executable | 801 KiB (`lto`, `strip`, `panic = "abort"`) |
 | Memory, private working set | 9.6 MB |
 | CPU | 0.07% of the machine on average (1.1% of one core) |
 | Back after an Explorer restart | 0.97 s |

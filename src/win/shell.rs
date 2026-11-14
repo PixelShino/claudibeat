@@ -28,29 +28,96 @@ pub fn is_busy() -> bool {
     state == QUNS_BUSY || state == QUNS_RUNNING_D3D_FULL_SCREEN || state == QUNS_PRESENTATION_MODE
 }
 
-pub fn autostart_get() -> bool {
-    // SAFETY: queries the size of one registry value.
-    unsafe { RegGetValueW(HKEY_CURRENT_USER, RUN_KEY, VALUE, RRF_RT_REG_SZ, None, None, None) == ERROR_SUCCESS }
+/// The scheduled task that starts claudibeat at sign-in.
+const TASK: &str = "claudibeat";
+
+/// Task Scheduler XML for that task: at this person's sign-in, on their
+/// own desktop without elevation, never stopped, at normal priority.
+pub fn task_xml(user: &str, exe: &str) -> String {
+    let esc = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+    let (user, exe) = (esc(user), esc(exe));
+    format!(
+        concat!(
+            "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\n",
+            "<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\n",
+            "  <RegistrationInfo><Description>claudibeat: Claude sessions on the taskbar</Description></RegistrationInfo>\n",
+            "  <Triggers><LogonTrigger><Enabled>true</Enabled><UserId>{user}</UserId><Delay>PT5S</Delay></LogonTrigger></Triggers>\n",
+            "  <Principals><Principal id=\"Author\"><UserId>{user}</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>\n",
+            "  <Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>",
+            "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><ExecutionTimeLimit>PT0S</ExecutionTimeLimit><Priority>4</Priority></Settings>\n",
+            "  <Actions Context=\"Author\"><Exec><Command>{exe}</Command></Exec></Actions>\n",
+            "</Task>\n",
+        ),
+        user = user,
+        exe = exe,
+    )
 }
 
+/// Run `schtasks.exe` from System32 without a console window; true on success.
+fn schtasks(args: &[&std::ffi::OsStr]) -> bool {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let exe = std::env::var_os("SystemRoot").map_or_else(|| "schtasks.exe".into(), |root| std::path::Path::new(&root).join("System32").join("schtasks.exe"));
+    std::process::Command::new(exe)
+        .args(args)
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+/// Whether claudibeat starts at sign-in. Spawns `schtasks`, so callers cache it.
+pub fn autostart_get() -> bool {
+    schtasks(&["/Query".as_ref(), "/TN".as_ref(), TASK.as_ref()])
+}
+
+/// Start claudibeat at sign-in through Task Scheduler, or stop doing so.
+///
+/// Not the `Run` key: on one Windows 11 machine Explorer skipped the first
+/// entries of `HKCU\...\Run` at every sign-in, claudibeat among them, with
+/// nothing in any log. A logon task does not depend on Explorer.
 pub fn autostart_set(on: bool) {
-    // SAFETY: opens, writes or deletes one value under the user's Run key.
+    if !on {
+        schtasks(&["/Delete".as_ref(), "/TN".as_ref(), TASK.as_ref(), "/F".as_ref()]);
+        remove_run_value();
+        return;
+    }
+    let Ok(exe) = std::env::current_exe() else { return };
+    let user = format!("{}\\{}", std::env::var("USERDOMAIN").unwrap_or_default(), std::env::var("USERNAME").unwrap_or_default());
+    let xml = task_xml(&user, &exe.display().to_string());
+    // schtasks reads the file in the encoding its declaration names: UTF-16 with a BOM.
+    let bytes: Vec<u8> = std::iter::once(0xFEFF).chain(xml.encode_utf16()).flat_map(u16::to_le_bytes).collect();
+    let path = std::env::temp_dir().join("claudibeat-task.xml");
+    if std::fs::write(&path, bytes).is_err() {
+        return;
+    }
+    let created = schtasks(&["/Create".as_ref(), "/TN".as_ref(), TASK.as_ref(), "/XML".as_ref(), path.as_os_str(), "/F".as_ref()]);
+    let _ = std::fs::remove_file(&path);
+    if created {
+        remove_run_value();
+    }
+}
+
+/// Builds before the logon task started through the `Run` key. Carry that
+/// choice over once; the `Run` value goes only when the task is in place.
+pub fn migrate_autostart() {
+    // SAFETY: queries the size of one registry value.
+    let in_run = unsafe { RegGetValueW(HKEY_CURRENT_USER, RUN_KEY, VALUE, RRF_RT_REG_SZ, None, None, None) == ERROR_SUCCESS };
+    if in_run {
+        autostart_set(true);
+    }
+}
+
+fn remove_run_value() {
+    // SAFETY: opens the user's Run key and deletes one value from it.
     unsafe {
         let mut key = HKEY::default();
-        if RegOpenKeyExW(HKEY_CURRENT_USER, RUN_KEY, 0, KEY_SET_VALUE, &mut key) != ERROR_SUCCESS {
-            return;
-        }
-        if on {
-            if let Ok(exe) = std::env::current_exe() {
-                let text = format!("\"{}\"", exe.display());
-                let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
-                let bytes = std::slice::from_raw_parts(wide.as_ptr().cast::<u8>(), wide.len() * 2);
-                let _ = RegSetValueExW(key, VALUE, 0, REG_SZ, Some(bytes));
-            }
-        } else {
+        if RegOpenKeyExW(HKEY_CURRENT_USER, RUN_KEY, 0, KEY_SET_VALUE, &mut key) == ERROR_SUCCESS {
             let _ = RegDeleteValueW(key, VALUE);
+            let _ = RegCloseKey(key);
         }
-        let _ = RegCloseKey(key);
     }
 }
 
