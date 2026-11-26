@@ -17,6 +17,8 @@
 
 </div>
 
+<p align="center"><img src="docs/media/en/demo.gif" width="800" alt="A 20-second tour: a chat finishes and the done counter ticks up, another asks a question and the waiting counter turns into a black pill, one click opens the sessions window, a task is dragged onto a chat on the Plane board"></p>
+
 When you run eight Claude sessions at once, the hard part isn't the work; it's noticing which one stopped to ask you something twenty minutes ago. claudibeat sits where the taskbar is empty anyway and answers three questions without opening a window: who's waiting for me, who has finished, who's still working. Next to that it shows how much memory is in use and how much of your Claude plan limit is gone.
 
 Subagents don't count. One chat tab is one session, however many helpers it spawned.
