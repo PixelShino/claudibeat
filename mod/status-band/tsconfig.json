@@ -1,0 +1,8 @@
+{
+  "extends": "./.claude-plugin/types/tsconfig.json",
+  "compilerOptions": {
+    // The mod calls MCP tools only through $.mcp.call (positional, loose args).
+    // Left in, the session's MCP typings break the `tool` narrowing of tool.call.
+    "types": ["claude-code", "claude-code-tools"]
+  }
+}

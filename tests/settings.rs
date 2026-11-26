@@ -13,16 +13,18 @@ fn tmp(name: &str) -> std::path::PathBuf {
 #[test]
 fn missing_file_means_sound_on() {
     assert!(Settings::load(&tmp("settings_missing")).sound);
+    assert!(Settings::load(&tmp("settings_missing")).quiet_helpers, "helpers are quiet unless switched off");
 }
 
 #[test]
 fn round_trip() {
     let path = tmp("settings_round_trip");
-    Settings { sound: false, language: Lang::Ru, dnd: true }.save(&path).unwrap();
+    Settings { sound: false, language: Lang::Ru, dnd: true, quiet_helpers: false }.save(&path).unwrap();
     let back = Settings::load(&path);
     assert!(!back.sound);
     assert_eq!(back.language, Lang::Ru);
     assert!(back.dnd);
+    assert!(!back.quiet_helpers);
 }
 
 #[test]

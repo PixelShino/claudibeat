@@ -20,6 +20,8 @@ pub struct Row {
     pub desktop_id: Option<String>,
     pub title: String,
     pub project: String,
+    /// The session's folder; empty when it has none.
+    pub cwd: String,
     pub link: Option<String>,
     pub state: SessionState,
     pub ask: Option<String>,
@@ -27,6 +29,8 @@ pub struct Row {
     pub doing: Option<String>,
     pub needs_you: bool,
     pub last_activity_at: i64,
+    /// Started by another chat: a helper, see [`IndexEntry::parent`].
+    pub parent: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -124,7 +128,8 @@ fn row_of(s: Option<&IndexEntry>, f: Option<&SessionFile>, acks: &HashMap<String
     let cwd_of = |a: Option<&str>, b: Option<&str>| a.filter(|c| !c.is_empty()).or(b).unwrap_or("").to_owned();
     let index_title = s.map(|s| s.title.as_str()).filter(|t| !t.is_empty());
     let file_title = f.and_then(|f| f.title.as_deref()).filter(|t| !t.is_empty());
-    let project = project_of(&cwd_of(s.map(|s| s.cwd.as_str()), f.map(|f| f.cwd.as_str())));
+    let cwd = cwd_of(s.map(|s| s.cwd.as_str()), f.map(|f| f.cwd.as_str()));
+    let project = project_of(&cwd);
     let title = index_title
         .or(file_title)
         .map(str::to_owned)
@@ -134,6 +139,7 @@ fn row_of(s: Option<&IndexEntry>, f: Option<&SessionFile>, acks: &HashMap<String
         desktop_id: s.map(|s| s.desktop_id.clone()).or_else(|| f.and_then(|f| f.desktop_id.clone())),
         title,
         project,
+        cwd,
         link: s.and_then(|s| s.link.clone()).or_else(|| f.and_then(|f| f.link.clone())),
         state,
         ask: if state == SessionState::Waiting { f.and_then(|f| f.ask.clone()) } else { None },
@@ -141,7 +147,14 @@ fn row_of(s: Option<&IndexEntry>, f: Option<&SessionFile>, acks: &HashMap<String
         doing: if is_live && state == SessionState::Working { f.and_then(|f| f.doing.clone()) } else { None },
         needs_you,
         last_activity_at,
+        parent: s.and_then(|s| s.parent.clone()),
     }
+}
+
+/// «Quiet helpers»: drop the chats another chat started. One that waits on
+/// the person stays, or it would hang there unseen.
+pub fn drop_helpers(rows: &mut Vec<Row>) {
+    rows.retain(|r| r.parent.is_none() || (r.state == SessionState::Waiting && r.needs_you));
 }
 
 pub fn counts(rows: &[Row]) -> Counts {

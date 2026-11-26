@@ -68,6 +68,85 @@ fn schtasks(args: &[&std::ffi::OsStr]) -> bool {
         .is_ok_and(|s| s.success())
 }
 
+/// Start the sign-in task now: claudibeat then runs as Task Scheduler starts
+/// it, outside whatever started this process.
+pub fn run_task() -> bool {
+    schtasks(&["/Run".as_ref(), "/TN".as_ref(), TASK.as_ref()])
+}
+
+/// The full name of the app package this process runs inside, if any.
+///
+/// Claude Desktop is an MSIX package: a program its chats start runs inside
+/// it, its AppData writes go to the package's own copy, and it is ended with
+/// the app when Claude restarts or updates. claudibeat must not live there.
+pub fn package_name() -> Option<String> {
+    use windows::Win32::Storage::Packaging::Appx::GetCurrentPackageFullName;
+    let mut len = 0u32;
+    // SAFETY: a size query, then a call with a buffer of that size.
+    unsafe {
+        let _ = GetCurrentPackageFullName(&mut len, windows::core::PWSTR::null());
+        if len == 0 {
+            return None;
+        }
+        let mut buf = vec![0u16; len as usize];
+        if GetCurrentPackageFullName(&mut len, windows::core::PWSTR(buf.as_mut_ptr())).is_err() {
+            return None;
+        }
+        Some(String::from_utf16_lossy(&buf[..(len as usize).saturating_sub(1)]))
+    }
+}
+
+/// The Claude app among this process's ancestors, if one is: a program a
+/// Claude chat starts lives under it and is ended when Claude restarts.
+pub fn started_under_claude() -> Option<String> {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Diagnostics::ToolHelp::{CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS};
+    let mut table: Vec<(u32, u32, String)> = Vec::new();
+    // SAFETY: a process snapshot walked with a local entry, then closed.
+    unsafe {
+        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
+        let mut e = PROCESSENTRY32W { dwSize: size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
+        if Process32FirstW(snap, &mut e).is_ok() {
+            loop {
+                let end = e.szExeFile.iter().position(|&c| c == 0).unwrap_or(e.szExeFile.len());
+                table.push((e.th32ProcessID, e.th32ParentProcessID, String::from_utf16_lossy(&e.szExeFile[..end])));
+                if Process32NextW(snap, &mut e).is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = CloseHandle(snap);
+    }
+    ancestor_named(&table, std::process::id(), "claude.exe")
+}
+
+/// Process ancestry ends at these: a parent id above them is long dead and
+/// may name an unrelated process by now (Windows reuses ids).
+const ROOTS: [&str; 5] = ["svchost.exe", "services.exe", "wininit.exe", "winlogon.exe", "explorer.exe"];
+
+/// Walk up from `pid` through (pid, parent, name) rows to a process named
+/// `name`; a cycle, 32 steps or a system root ([`ROOTS`]) end the walk.
+pub fn ancestor_named(table: &[(u32, u32, String)], pid: u32, name: &str) -> Option<String> {
+    let mut at = table.iter().find(|r| r.0 == pid)?.1;
+    let mut path = Vec::new();
+    for _ in 0..32 {
+        let row = table.iter().find(|r| r.0 == at)?;
+        if row.2.eq_ignore_ascii_case(name) {
+            path.push(format!("{} (pid {})", row.2, row.0));
+            return Some(path.into_iter().rev().collect::<Vec<_>>().join(" > "));
+        }
+        if ROOTS.iter().any(|r| row.2.eq_ignore_ascii_case(r)) {
+            return None;
+        }
+        path.push(row.2.clone());
+        if row.1 == row.0 || row.1 == 0 {
+            return None;
+        }
+        at = row.1;
+    }
+    None
+}
+
 /// Whether claudibeat starts at sign-in. Spawns `schtasks`, so callers cache it.
 pub fn autostart_get() -> bool {
     schtasks(&["/Query".as_ref(), "/TN".as_ref(), TASK.as_ref()])
@@ -140,4 +219,58 @@ pub fn system_theme() -> crate::render::Theme {
         )
     };
     crate::render::Theme::from_system_value((read == ERROR_SUCCESS).then_some(value))
+}
+
+/// A folder of the signed-in user (`FOLDERID_RoamingAppData`, `FOLDERID_Profile`),
+/// asked of Windows itself: a process the Task Scheduler starts need not have
+/// `APPDATA` or `USERPROFILE` in its environment.
+pub fn known_folder(id: &windows::core::GUID) -> Option<std::path::PathBuf> {
+    use windows::Win32::System::Com::CoTaskMemFree;
+    use windows::Win32::UI::Shell::{KF_FLAG_DEFAULT, SHGetKnownFolderPath};
+    // SAFETY: the returned string is copied, then freed with the allocator Windows names.
+    unsafe {
+        let p = SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, None).ok()?;
+        let path = p.to_string().ok().map(std::path::PathBuf::from);
+        CoTaskMemFree(Some(p.0 as *const _));
+        path
+    }
+}
+
+/// `%APPDATA%`: from Windows, the environment, or the exe's own place.
+pub fn roaming_dir() -> std::path::PathBuf {
+    known_folder(&windows::Win32::UI::Shell::FOLDERID_RoamingAppData)
+        .or_else(|| std::env::var_os("APPDATA").map(std::path::PathBuf::from))
+        .filter(|p| p.is_absolute())
+        .or_else(|| profile_from_exe().map(|h| h.join("AppData").join("Roaming")))
+        .unwrap_or_default()
+}
+
+/// `%USERPROFILE%`: from Windows, the environment, or the exe's own place.
+pub fn profile_dir() -> std::path::PathBuf {
+    known_folder(&windows::Win32::UI::Shell::FOLDERID_Profile)
+        .or_else(|| std::env::var_os("USERPROFILE").map(std::path::PathBuf::from))
+        .filter(|p| p.is_absolute())
+        .or_else(profile_from_exe)
+        .unwrap_or_default()
+}
+
+/// The profile the exe is installed in: the folder holding `AppData` on the
+/// way up from `<profile>\AppData\Local\Programs\claudibeat\claudibeat.exe`.
+pub fn profile_from_exe() -> Option<std::path::PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let mut p = exe.as_path();
+    while let Some(parent) = p.parent() {
+        if p.file_name().is_some_and(|n| n.eq_ignore_ascii_case("AppData")) {
+            return Some(parent.to_path_buf());
+        }
+        p = parent;
+    }
+    None
+}
+
+/// Where the folders came from, for the log.
+pub fn folder_sources() -> String {
+    let win = known_folder(&windows::Win32::UI::Shell::FOLDERID_RoamingAppData).is_some();
+    let env = std::env::var_os("APPDATA").is_some();
+    format!("known folder: {win}, APPDATA: {env}, exe profile: {:?}", profile_from_exe())
 }

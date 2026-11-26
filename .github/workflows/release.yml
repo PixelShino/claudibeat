@@ -1,0 +1,72 @@
+name: release
+
+# A tag such as v0.2.0 builds the exe, tests it and publishes a GitHub release
+# with the exe, its SHA256 and ready winget manifests.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust (GNU toolchain, as the author builds)
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal
+          rustup default stable-x86_64-pc-windows-gnu
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test
+        run: cargo test --release
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Package
+        id: pack
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          if (-not ($version -match '^\d')) { $version = (cargo pkgid).Split('#')[-1].Split('@')[-1] }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/release/claudibeat.exe dist/claudibeat.exe
+          $hash = (Get-FileHash dist/claudibeat.exe -Algorithm SHA256).Hash
+          Set-Content dist/claudibeat.exe.sha256 $hash -NoNewline -Encoding ascii
+          ./packaging/winget/make-manifests.ps1 -Version $version -Sha256 $hash -Out dist/winget
+          Compress-Archive dist/winget/* dist/winget-manifests.zip
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "v${{ steps.pack.outputs.version }}"
+          gh release create $tag dist/claudibeat.exe dist/claudibeat.exe.sha256 dist/winget-manifests.zip `
+            --title "claudibeat $tag" --generate-notes
+
+      # The Scoop bucket lives in this repo: point it at the new release.
+      - name: Scoop bucket
+        run: |
+          $version = "${{ steps.pack.outputs.version }}"
+          $hash = (Get-Content dist/claudibeat.exe.sha256 -Raw).Trim().ToLower()
+          git fetch origin main
+          git checkout -B main origin/main
+          $path = 'bucket/claudibeat.json'
+          $json = Get-Content $path -Raw | ConvertFrom-Json
+          $json.version = $version
+          $json.architecture.'64bit'.url = "https://github.com/${{ github.repository }}/releases/download/v$version/claudibeat.exe"
+          $json.architecture.'64bit'.hash = $hash
+          ($json | ConvertTo-Json -Depth 10) + "`n" | Set-Content $path -Encoding utf8NoBOM -NoNewline
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add $path
+          git diff --cached --quiet || (git commit -m "scoop: claudibeat $version" && git push origin main)

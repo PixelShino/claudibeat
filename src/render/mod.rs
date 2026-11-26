@@ -2,6 +2,7 @@
 //! premultiplied BGRA WIC bitmap. The same pixels go to a PNG (`--render`)
 //! or to a layered window on the taskbar.
 
+pub mod board;
 pub mod flyout;
 pub mod icons;
 pub mod strip;
@@ -42,6 +43,10 @@ pub const SURFACE: Color = Color(0xFFF9_F9F9);
 pub const HAIR: Color = Color(0x1700_0000);
 /// The hairline ring round a floating card.
 pub const EDGE: Color = Color(0x1400_0000);
+/// A board column's well, a shade under the card it sits on.
+pub const LANE: Color = Color(0x0900_0000);
+/// A task card inside a well: lifted, a shade over the window.
+pub const CARD_BG: Color = Color(0xFFFF_FFFF);
 
 /// Light or dark, as the taskbar is. Every surface is written in the light
 /// palette above; the dark theme swaps each grey for its partner at paint
@@ -72,6 +77,8 @@ impl Theme {
             SURFACE => Color(0xFF2C_2C2C),
             HAIR => Color(0x17FF_FFFF),
             EDGE => Color(0x1AFF_FFFF),
+            LANE => Color(0x0AFF_FFFF),
+            CARD_BG => Color(0xFF38_3838),
             other => other,
         }
     }
@@ -471,6 +478,29 @@ impl Painter<'_> {
             let mut count = 0u32;
             let _ = layout.GetLineMetrics(Some(&mut line), &mut count);
             Some(TextBox { layout, color: style.color, width: m.width.min(max_w), height: m.height, baseline: line[0].baseline })
+        }
+    }
+
+    /// Wrapped text cut to `lines` lines, the last ending in an ellipsis when
+    /// more would follow.
+    pub fn text_lines(&self, text: &str, style: &TextStyle, max_w: f32, lines: u32) -> Option<TextBox> {
+        let wide: Vec<u16> = text.encode_utf16().collect();
+        let line_h = self.measure("Ag", style).1.max(1.0);
+        // SAFETY: DirectWrite calls with buffers that live through each call.
+        unsafe {
+            let format = self.r.format(style).ok()?;
+            let sign = self.r.dwrite.CreateEllipsisTrimmingSign(&format).ok()?;
+            let trimming = DWRITE_TRIMMING { granularity: DWRITE_TRIMMING_GRANULARITY_WORD, delimiter: 0, delimiterCount: 0 };
+            format.SetTrimming(&trimming, &sign).ok()?;
+            let max_h = line_h * lines as f32 + line_h * 0.5;
+            let layout = self.r.dwrite.CreateTextLayout(&wide, &format, max_w, max_h).ok()?;
+            let mut m = DWRITE_TEXT_METRICS::default();
+            layout.GetMetrics(&mut m).ok()?;
+            let mut line = [DWRITE_LINE_METRICS::default(); 1];
+            let mut count = 0u32;
+            let _ = layout.GetLineMetrics(Some(&mut line), &mut count);
+            let shown = (m.lineCount.min(lines)).max(1) as f32;
+            Some(TextBox { layout, color: style.color, width: m.width.min(max_w), height: (line_h * shown).min(m.height.max(line_h)), baseline: line[0].baseline })
         }
     }
 

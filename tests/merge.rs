@@ -1,4 +1,4 @@
-use claudibeat::merge::{IDLE_KEEP_MS, STALE_MS, counts, groups, merge_rows, open_target, project_of};
+use claudibeat::merge::{IDLE_KEEP_MS, STALE_MS, counts, drop_helpers, groups, merge_rows, open_target, project_of};
 use claudibeat::model::{AckFile, IndexEntry, SessionFile, SessionState};
 use std::collections::HashMap;
 
@@ -12,6 +12,7 @@ fn entry(id: &str, running: bool, last: i64) -> IndexEntry {
         is_running: running,
         last_activity_at: last,
         link: Some(format!("claude://claude.ai/epitaxy/{id}")),
+        parent: None,
     }
 }
 
@@ -195,4 +196,19 @@ fn live_counts_print() {
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
     let rows = merge_rows(&s.index, &s.files, &s.acks, now);
     println!("LIVE {:?}", counts(&rows));
+}
+
+#[test]
+fn helpers_stay_out_unless_they_wait_on_you() {
+    let index: Vec<IndexEntry> = serde_json::from_str(
+        r#"[{"desktopId":"p","isRunning":true},{"desktopId":"h1","isRunning":true,"parent":"p"},{"desktopId":"h2","parent":"p"}]"#,
+    )
+    .unwrap();
+    let files = vec![file("h2", Some("h2"), SessionState::Waiting, NOW - 5_000, NOW - 1_000)];
+    let mut rows = merge_rows(&index, &files, &no_acks(), NOW);
+    assert_eq!(rows.iter().find(|r| r.key == "h1").and_then(|r| r.parent.as_deref()), Some("p"));
+    drop_helpers(&mut rows);
+    let mut keys: Vec<&str> = rows.iter().map(|r| r.key.as_str()).collect();
+    keys.sort();
+    assert_eq!(keys, ["h2", "p"], "the working helper goes, the waiting one stays");
 }

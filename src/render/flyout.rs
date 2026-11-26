@@ -66,6 +66,7 @@ pub struct Prefs {
     pub dnd: bool,
     pub sound: bool,
     pub autostart: bool,
+    pub quiet_helpers: bool,
 }
 
 impl FlyoutModel<'_> {
@@ -113,10 +114,13 @@ pub enum FlyoutHit {
     Row(String),
     More(usize),
     Gear,
+    /// Mark every waiting and finished session seen.
+    SeenAll,
     Back,
     Dnd,
     Sound,
     Autostart,
+    Helpers,
     Lang(Lang),
 }
 
@@ -192,7 +196,7 @@ fn layout_settings(p: &Painter) -> FlyoutLayout {
     let mut controls = vec![(FlyoutHit::Back, header_button(probe, title_y, h.h14, true))];
     let mut y = title_y + h.h14 + 8.0 + 1.0 + 4.0;
     let rh = settings_row_height(&h);
-    for hit in [FlyoutHit::Dnd, FlyoutHit::Sound, FlyoutHit::Autostart] {
+    for hit in [FlyoutHit::Dnd, FlyoutHit::Sound, FlyoutHit::Helpers, FlyoutHit::Autostart] {
         controls.push((hit, Rect::new(card_x + 8.0, y, CARD_W - 16.0, rh)));
         y += rh;
     }
@@ -292,7 +296,12 @@ pub fn layout_flyout(m: &FlyoutModel, p: &Painter, max_h: f32) -> FlyoutLayout {
     let more = blocks.iter().filter_map(|(b, r)| if let Block::More { group, .. } = b { Some((*group, *r)) } else { None }).collect();
 
     let card = Rect::new(card_x, card_y, CARD_W, card_h);
-    let mut controls = vec![(FlyoutHit::Gear, header_button(card, title_y, h.h14, false))];
+    let gear = header_button(card, title_y, h.h14, false);
+    let mut controls = vec![(FlyoutHit::Gear, gear)];
+    // Only while something waits or sits finished: then there is something to clear.
+    if !m.groups.waiting.is_empty() || !m.groups.done.is_empty() {
+        controls.push((FlyoutHit::SeenAll, Rect { x: gear.x - BUTTON - 2.0, ..gear }));
+    }
     // Footer row: "do not disturb" on the left, the language on the right.
     let row_y = card.bottom() - FOOTER_PAD - 28.0;
     let dnd_w = 8.0 + CHECK + 8.0 + p.measure(m.lang.words().dnd, &MEM_NAME).0 + 10.0;
@@ -387,6 +396,7 @@ fn paint_settings(p: &Painter, l: &FlyoutLayout, m: &FlyoutModel, hover: Option<
     for (hit, title, note, on) in [
         (FlyoutHit::Dnd, w.dnd, w.dnd_note, m.prefs.dnd),
         (FlyoutHit::Sound, w.menu_sound, w.sound_note, m.prefs.sound),
+        (FlyoutHit::Helpers, w.helpers, w.helpers_note, m.prefs.quiet_helpers),
         (FlyoutHit::Autostart, w.menu_autostart, w.autostart_note, m.prefs.autostart),
     ] {
         let Some(r) = control(l, &hit) else { continue };
@@ -422,7 +432,11 @@ pub fn paint_flyout(p: &Painter, l: &FlyoutLayout, m: &FlyoutModel, hover: Optio
     p.text(w.flyout_title, card.x + 16.0, l.title_y, &TITLE);
     let gear = control(l, &FlyoutHit::Gear).unwrap_or_default();
     paint_button(p, gear, Icon::Gear, hover == Some(&FlyoutHit::Gear));
-    text_right(p, &total(m.lang, m.total), gear.x - 4.0, l.title_y + (h.h14 - h.h12) * 0.75, &SMALL);
+    let seen_all = control(l, &FlyoutHit::SeenAll);
+    if let Some(r) = seen_all {
+        paint_button(p, r, Icon::SeenAll, hover == Some(&FlyoutHit::SeenAll));
+    }
+    text_right(p, &total(m.lang, m.total), seen_all.unwrap_or(gear).x - 4.0, l.title_y + (h.h14 - h.h12) * 0.75, &SMALL);
 
     let scroll = scroll.clamp(0.0, l.scroll_max);
     p.clip(l.list, |p| {

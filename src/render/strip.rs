@@ -20,6 +20,8 @@ pub enum StripItem {
     Waiting,
     Done,
     Working,
+    /// Plane: the work items in progress; shown only when the mod keeps a board.
+    Tasks,
     Memory,
     Limit,
 }
@@ -29,6 +31,8 @@ pub struct StripModel {
     pub waiting: usize,
     pub done: usize,
     pub working: usize,
+    /// Work items in progress; none: no Plane board, no item.
+    pub tasks: Option<usize>,
     pub mem_percent: u8,
     pub mem_alert: bool,
     /// Percent used and the ring's fraction; `None` while unknown.
@@ -51,7 +55,7 @@ impl StripLayout {
 fn glyph_size(item: StripItem) -> f32 {
     match item {
         StripItem::Waiting => 12.0,
-        StripItem::Done | StripItem::Working => 13.0,
+        StripItem::Done | StripItem::Working | StripItem::Tasks => 13.0,
         StripItem::Memory | StripItem::Limit => 14.0,
     }
 }
@@ -61,6 +65,7 @@ fn label(item: StripItem, m: &StripModel) -> String {
         StripItem::Waiting => m.waiting.to_string(),
         StripItem::Done => m.done.to_string(),
         StripItem::Working => m.working.to_string(),
+        StripItem::Tasks => m.tasks.unwrap_or(0).to_string(),
         StripItem::Memory => format!("{}%", m.mem_percent),
         StripItem::Limit => m.limit.map_or("–".to_owned(), |(used, _)| format!("{used}%")),
     }
@@ -69,9 +74,10 @@ fn label(item: StripItem, m: &StripModel) -> String {
 pub fn layout_strip(m: &StripModel, p: &Painter) -> StripLayout {
     let y = (STRIP_H - ITEM_H) / 2.0;
     let mut x = LEFT;
-    let mut items = Vec::with_capacity(5);
+    let mut items = Vec::with_capacity(6);
     let mut separator = Rect::default();
-    for item in [StripItem::Waiting, StripItem::Done, StripItem::Working, StripItem::Memory, StripItem::Limit] {
+    let tasks = m.tasks.is_some().then_some(StripItem::Tasks);
+    for item in [Some(StripItem::Waiting), Some(StripItem::Done), Some(StripItem::Working), tasks, Some(StripItem::Memory), Some(StripItem::Limit)].into_iter().flatten() {
         if item == StripItem::Memory {
             x += SEP_MARGIN;
             separator = Rect::new(x, (STRIP_H - SEP_H) / 2.0, 1.0, SEP_H);
@@ -93,6 +99,7 @@ pub fn paint_strip(p: &Painter, l: &StripLayout, m: &StripModel, hover: Option<S
             StripItem::Waiting => m.waiting == 0,
             StripItem::Done => m.done == 0,
             StripItem::Working => m.working == 0,
+            StripItem::Tasks => m.tasks.unwrap_or(0) == 0,
             StripItem::Memory => false,
             StripItem::Limit => m.limit.is_none(),
         };
@@ -109,6 +116,7 @@ pub fn paint_strip(p: &Painter, l: &StripLayout, m: &StripModel, hover: Option<S
                 StripItem::Waiting => icon(p, Icon::Wait, cx, cy, size, ink),
                 StripItem::Done => icon(p, Icon::Done, cx, cy, size, ink),
                 StripItem::Working => icon(p, Icon::Star, cx, cy, size, ink),
+                StripItem::Tasks => icon(p, Icon::Board, cx, cy, size, ink),
                 StripItem::Memory => icon(p, if m.mem_alert { Icon::MemFull } else { Icon::Mem }, cx, cy, size, ink),
                 StripItem::Limit => p.ring(cx, cy, 5.5 * size / 14.0, 2.0 * size / 14.0, m.limit.map_or(0.0, |(_, f)| f), ink, TRACK),
             }

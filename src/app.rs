@@ -6,17 +6,19 @@
 //! procedures queue [`Input`]s; the host hands them to [`App`] with its state
 //! borrowed only here, never inside another window procedure.
 
+use crate::board::{Assignment, BoardFile, Column, Mailbox, Pending, REQUEST_TIMEOUT_MS, Request, Target, project_folders, request_id};
 use crate::limits::{LimitView, limit_views, strip_limit};
 use crate::memory::{self, MemGroups};
-use crate::merge::{Row, counts, groups, merge_rows, open_target};
+use crate::merge::{Row, counts, drop_helpers, groups, merge_rows, open_target};
 use crate::notify::{Notifier, ToastKind, ToastStack};
+use crate::render::board::{self as board_ui, BoardHit, BoardLayout, BoardModel, Drag, Drop, Status, Tone, layout_board, paint_board};
 use crate::render::flyout::{FlyoutHit, FlyoutLayout, FlyoutModel, FlyoutView, M_BOTTOM, M_SIDE, Prefs, layout_flyout, paint_flyout};
 use crate::render::strip::{STRIP_H, StripItem, StripLayout, StripModel, layout_strip, paint_strip};
 use crate::render::toast::{T_SIDE, T_TOP, TOAST_W, ToastModel, layout_toast, paint_toast, paint_tooltip, toast_model, tooltip_size};
 use crate::render::{Rect, Renderer, TRANSPARENT};
 use crate::settings::Settings;
 use crate::store::Store;
-use crate::text::{local_tz_offset_min, tip_done, tip_limit, tip_memory, tip_waiting, tip_working};
+use crate::text::{local_tz_offset_min, tip_done, tip_limit, tip_memory, tip_tasks, tip_waiting, tip_working};
 use crate::win::popup::{self, Popup};
 use crate::win::strip_window::{self, StripWindow};
 use crate::win::{Action, Input, Surface, WM_FOLDER_CHANGED, WM_INPUT_READY, cursor_over, set_hand, shell, taskbar};
@@ -40,6 +42,15 @@ const T_TRAY: usize = 3;
 const T_SOON: usize = 4;
 const T_TIP: usize = 5;
 const T_TOAST: usize = 6;
+/// Ticks while the board waits on requests, to read replies quickly.
+const T_BOARD: usize = 7;
+const BOARD_TICK_MS: u32 = 400;
+/// The board asks the mod for fresh data when what it has is older than this.
+const BOARD_STALE_MS: i64 = 60_000;
+/// A line at the board's foot stays this long.
+const STATUS_MS: i64 = 9_000;
+/// A press becomes a drag once the pointer travels this far, in DIPs.
+const DRAG_SLOP: f32 = 5.0;
 
 const REFRESH_MS: u32 = 2_000;
 const MEMORY_MS: u32 = 3_000;
@@ -122,6 +133,22 @@ struct FlyGeo {
     scale: f32,
 }
 
+struct BoardGeo {
+    layout: BoardLayout,
+    dx: f32,
+    scale: f32,
+}
+
+/// The left button is down on the board: maybe a click, maybe a drag.
+struct Press {
+    hit: Option<BoardHit>,
+    /// Board DIPs where it went down.
+    x: f32,
+    y: f32,
+    /// The pressed card's corner relative to the pointer.
+    grab: (f32, f32),
+}
+
 struct ToastHit {
     index: usize,
     card: Rect,
@@ -183,6 +210,24 @@ pub struct App {
     toast_key: Option<ToastKey>,
     /// Whether the logon task exists; asking means running `schtasks`.
     autostart: bool,
+
+    board_file: Option<BoardFile>,
+    assignments: Vec<Assignment>,
+    /// Holders learnt from replies, kept while the card is in progress.
+    seen_holders: Vec<Assignment>,
+    mailbox: Mailbox,
+    board: Popup,
+    board_geo: Option<BoardGeo>,
+    board_scroll: [f32; 4],
+    board_hover: Option<BoardHit>,
+    board_filter: Option<String>,
+    press: Option<Press>,
+    drag: Option<Drag>,
+    pending: Vec<Pending>,
+    status: Option<(Status, i64)>,
+    salt: u32,
+    /// Moves arrive faster than frames: the board is drawn once per batch.
+    board_dirty: bool,
 }
 
 impl App {
@@ -223,6 +268,21 @@ impl App {
             toast_timer: false,
             toast_key: None,
             autostart: shell::autostart_get(),
+            board_file: None,
+            assignments: Vec::new(),
+            seen_holders: Vec::new(),
+            mailbox: Mailbox::new(&Store::default_dir()),
+            board: Popup::new(instance, Surface::Board)?,
+            board_geo: None,
+            board_scroll: [0.0; 4],
+            board_hover: None,
+            board_filter: None,
+            press: None,
+            drag: None,
+            pending: Vec::new(),
+            status: None,
+            salt: 0,
+            board_dirty: false,
         })
     }
 
@@ -244,7 +304,21 @@ impl App {
         let now = now_ms();
         self.tz = local_tz_offset_min();
         self.rows = merge_rows(&snap.index, &snap.files, &snap.acks, now);
+        if self.settings.quiet_helpers {
+            drop_helpers(&mut self.rows);
+        }
         self.limits = limit_views(snap.account.as_ref(), now);
+        self.board_file = snap.board;
+        if let Some(b) = &self.board_file {
+            self.seen_holders.retain(|a| b.doing.iter().any(|c| c.key == a.task));
+        }
+        self.assignments = snap.assignments;
+        // Until a leading mod writes them down, the replies this claudibeat
+        // saw still say who holds what.
+        let seen = &self.seen_holders;
+        let missing: Vec<Assignment> = seen.iter().filter(|a| !self.assignments.iter().any(|b| b.task == a.task)).cloned().collect();
+        self.assignments.extend(missing);
+        self.read_replies(now);
         self.busy = shell::is_busy();
         // WM_SETTINGCHANGE brings a switch at once; this catches a missed one.
         self.sync_theme();
@@ -291,7 +365,7 @@ impl App {
     }
 
     fn prefs(&self) -> Prefs {
-        Prefs { dnd: self.settings.dnd, sound: self.settings.sound, autostart: self.autostart }
+        Prefs { dnd: self.settings.dnd, sound: self.settings.sound, autostart: self.autostart, quiet_helpers: self.settings.quiet_helpers }
     }
 
     fn strip_model(&self) -> StripModel {
@@ -300,6 +374,7 @@ impl App {
             waiting: c.waiting,
             done: c.done,
             working: c.working,
+            tasks: self.board_file.as_ref().map(|b| b.column(Column::Doing).len()),
             mem_percent: self.mem.percent(),
             mem_alert: self.mem.alert(),
             limit: strip_limit(&self.limits).map(|v| (v.used, v.used_fraction())),
@@ -313,6 +388,7 @@ impl App {
             StripItem::Waiting => tip_waiting(lang, c.waiting),
             StripItem::Done => tip_done(lang, c.done),
             StripItem::Working => tip_working(lang, c.working),
+            StripItem::Tasks => self.board_file.as_ref().map_or_else(|| lang.board().tip_tasks.to_owned(), |b| tip_tasks(lang, b.column(Column::Doing).len(), b.todo.len())),
             StripItem::Memory => tip_memory(lang, self.mem.used, self.mem.total),
             StripItem::Limit => strip_limit(&self.limits).map_or_else(|| lang.words().limit_unknown.to_owned(), |v| tip_limit(lang, v, now_ms(), self.tz)),
         }
@@ -337,6 +413,9 @@ impl App {
         if self.fly_hover.is_some() && !(self.flyout.visible() && cursor_over(self.flyout.hwnd()).is_some()) {
             self.fly_hover = None;
         }
+        if self.board_hover.is_some() && self.drag.is_none() && !(self.board.visible() && cursor_over(self.board.hwnd()).is_some()) {
+            self.board_hover = None;
+        }
     }
 
     fn draw_all(&mut self) {
@@ -344,6 +423,9 @@ impl App {
         self.draw_strip();
         if self.flyout.visible() {
             self.draw_flyout();
+        }
+        if self.board.visible() {
+            self.draw_board();
         }
         self.draw_toasts();
         if let Some(item) = self.tip_item {
@@ -406,7 +488,7 @@ impl App {
 
     fn draw_toasts(&mut self) {
         let geo = geometry();
-        let (Some(geo), false, false, false) = (geo, self.stack.items.is_empty(), self.flyout.visible(), self.busy) else {
+        let (Some(geo), false, false, false) = (geo, self.stack.items.is_empty(), self.flyout.visible() || self.board.visible(), self.busy) else {
             self.toasts.hide();
             self.toast_geo = None;
             self.toast_key = None;
@@ -501,6 +583,8 @@ impl App {
             Action::OpenFlyout => {}
             Action::ToggleFlyout if self.flyout.visible() => self.close_flyout(),
             Action::ToggleFlyout => self.open_flyout(),
+            Action::ToggleBoard if self.board.visible() => self.close_board(),
+            Action::ToggleBoard => self.open_board(),
             Action::MarkAllSeen => {
                 let now = now_ms();
                 for r in self.rows.iter().filter(|r| r.needs_you) {
@@ -518,6 +602,13 @@ impl App {
                 self.autostart = shell::autostart_get();
                 self.redraw_flyout();
             }
+            Action::ToggleHelpers => {
+                self.settings.quiet_helpers = !self.settings.quiet_helpers;
+                let _ = self.settings.save(&self.settings_path);
+                let _ = self.store.write_tray(now_ms(), self.settings.quiet_helpers);
+                self.refresh();
+                self.draw_all();
+            }
             Action::ToggleDnd => {
                 self.settings.dnd = !self.settings.dnd;
                 let _ = self.settings.save(&self.settings_path);
@@ -533,8 +624,11 @@ impl App {
                 let _ = self.settings.save(&self.settings_path);
                 self.draw_all();
             }
-            // SAFETY: ends our own message loop.
-            Action::Quit => unsafe { PostQuitMessage(0) },
+            Action::Quit => {
+                crate::guard::log("strip: Quit from the menu");
+                // SAFETY: ends our own message loop.
+                unsafe { PostQuitMessage(0) }
+            }
         }
     }
 
@@ -569,6 +663,7 @@ impl App {
     }
 
     fn open_flyout(&mut self) {
+        self.close_board();
         self.hide_tip();
         self.expanded = [false; 3];
         self.scroll = 0.0;
@@ -614,7 +709,7 @@ impl App {
             Input::RightClick(Surface::Strip) => {
                 self.hide_tip();
                 let pending = self.rows.iter().any(|r| r.needs_you);
-                if let Some(a) = strip_window::menu(self.host, pending, self.prefs(), self.settings.language) {
+                if let Some(a) = strip_window::menu(self.host, pending, self.board_file.is_some(), self.prefs(), self.settings.language) {
                     self.act(a);
                 }
             }
@@ -637,9 +732,11 @@ impl App {
                     self.draw_flyout();
                 }
                 (Some(FlyoutHit::Gear), _) => self.show_view(FlyoutView::Settings),
+                (Some(FlyoutHit::SeenAll), _) => self.act(Action::MarkAllSeen),
                 (Some(FlyoutHit::Back), _) => self.show_view(FlyoutView::Sessions),
                 (Some(FlyoutHit::Dnd), _) => self.act(Action::ToggleDnd),
                 (Some(FlyoutHit::Sound), _) => self.act(Action::ToggleSound),
+                (Some(FlyoutHit::Helpers), _) => self.act(Action::ToggleHelpers),
                 (Some(FlyoutHit::Autostart), _) => self.act(Action::ToggleAutostart),
                 (Some(FlyoutHit::Lang(lang)), _) => self.act(Action::SetLanguage(lang)),
                 (None, false) => self.close_flyout(),
@@ -657,6 +754,29 @@ impl App {
             // Esc on the settings page steps back; on the list it closes.
             Input::Escape(Surface::Flyout) if self.flyout.visible() && self.fly_view == FlyoutView::Settings => self.show_view(FlyoutView::Sessions),
             Input::Escape(Surface::Flyout) | Input::Deactivated(Surface::Flyout) if self.flyout.visible() => self.close_flyout(),
+
+            Input::Move(Surface::Board, x, y) => self.board_move(x, y),
+            Input::Leave(Surface::Board) if self.board_hover.is_some() && self.drag.is_none() => {
+                self.board_hover = None;
+                self.board_dirty = true;
+            }
+            Input::Down(Surface::Board, x, y) => self.board_down(x, y),
+            Input::Up(Surface::Board, x, y) => self.board_up(x, y),
+            Input::Lost(Surface::Board) => {
+                self.press = None;
+                if self.drag.take().is_some() {
+                    self.board_dirty = true;
+                }
+            }
+            Input::Wheel(Surface::Board, delta) if self.board.visible() => self.board_wheel(delta),
+            Input::Escape(Surface::Board) if self.drag.is_some() => {
+                self.drag = None;
+                self.press = None;
+                self.board_dirty = true;
+            }
+            // Losing focus mid-drag (a toast, a dialog) keeps the board.
+            Input::Deactivated(Surface::Board) if self.drag.is_some() => {}
+            Input::Escape(Surface::Board) | Input::Deactivated(Surface::Board) if self.board.visible() => self.close_board(),
 
             Input::Move(Surface::Toasts, x, y) => {
                 self.toast_hovered = true;
@@ -699,6 +819,9 @@ impl App {
 
     /// One waiting or finished session opens straight away; otherwise the list.
     fn strip_action(&self, item: StripItem) -> Action {
+        if item == StripItem::Tasks {
+            return Action::ToggleBoard;
+        }
         let g = groups(&self.rows);
         let only = match item {
             StripItem::Waiting if g.waiting.len() == 1 => g.waiting.first(),
@@ -759,7 +882,7 @@ impl App {
                 }
             }
             T_TRAY => {
-                let _ = self.store.write_tray(now_ms());
+                let _ = self.store.write_tray(now_ms(), self.settings.quiet_helpers);
             }
             T_TIP => {
                 self.kill(T_TIP);
@@ -768,6 +891,15 @@ impl App {
                 }
             }
             T_TOAST => self.tick_toasts(),
+            T_BOARD => {
+                self.read_replies(now_ms());
+                if self.pending.is_empty() {
+                    self.kill(T_BOARD);
+                }
+                if self.board.visible() {
+                    self.draw_board();
+                }
+            }
             _ => {}
         }
     }
@@ -796,6 +928,274 @@ impl App {
         }
     }
 
+    // ---- the Plane board ----------------------------------------------------
+
+    /// Chats a task can go to: who waits, who finished, who works, then the
+    /// quiet ones, freshest first.
+    fn board_agents(&self) -> Vec<&Row> {
+        let rank = |r: &Row| match r.state {
+            SessionState::Waiting if r.needs_you => 0,
+            SessionState::Done if r.needs_you => 1,
+            SessionState::Working => 2,
+            _ => 3,
+        };
+        let mut rows: Vec<&Row> = self.rows.iter().collect();
+        rows.sort_by_key(|r| (rank(r), std::cmp::Reverse(r.last_activity_at)));
+        rows
+    }
+
+    fn board_folders(&self) -> Vec<(String, String)> {
+        let seen: Vec<(String, String, i64)> = self.rows.iter().map(|r| (r.cwd.clone(), r.project.clone(), r.last_activity_at)).collect();
+        project_folders(&seen, 6).into_iter().chain(std::iter::once((String::new(), String::new()))).collect()
+    }
+
+    fn board_status(&self, now: i64) -> Option<Status> {
+        self.status.as_ref().filter(|(_, at)| now - at < STATUS_MS).map(|(s, _)| s.clone())
+    }
+
+    fn draw_board(&mut self) {
+        let Some(geo) = geometry() else { return };
+        let now = now_ms();
+        let folders = self.board_folders();
+        let model = BoardModel {
+            board: self.board_file.as_ref(),
+            agents: self.board_agents(),
+            assignments: &self.assignments,
+            pending: &self.pending,
+            filter: self.board_filter.clone(),
+            folders,
+            now,
+            lang: self.settings.language,
+            status: self.board_status(now),
+        };
+        let avail = (geo.rect.top - geo.work_top) as f32 / geo.scale;
+        let max_h = avail + board_ui::M_BOTTOM - GAP;
+        let max_w = (geo.rect.right - geo.rect.left) as f32 / geo.scale - EDGE;
+        let mut layout = None;
+        let _ = self.renderer.render(1.0, 1.0, 1.0, TRANSPARENT, |p| layout = Some(layout_board(&model, p, max_w, max_h)));
+        let Some(l) = layout else { return };
+        let mut scroll = self.board_scroll;
+        for (s, max) in scroll.iter_mut().zip(l.scroll_max) {
+            *s = s.clamp(0.0, max);
+        }
+        let dx = EDGE - l.card.x;
+        let (w, h) = (EDGE + l.card.w + board_ui::M_SIDE, l.card.bottom() + GAP);
+        let (hover, drag) = (self.board_hover.as_ref(), self.drag.as_ref());
+        let Ok(frame) = self.renderer.render(w, h, geo.scale, TRANSPARENT, |p| p.translate(dx, 0.0, |p| paint_board(p, &l, &model, hover, &scroll, drag))) else {
+            return;
+        };
+        drop(model);
+        self.board_scroll = scroll;
+        set_hand(Surface::Board, self.drag.is_none() && matches!(self.board_hover, Some(BoardHit::Card(..) | BoardHit::Filter(_) | BoardHit::Refresh | BoardHit::Close) | Some(BoardHit::Session(_))));
+        let _ = self.board.show(&frame, geo.rect.left, geo.rect.top - frame.height as i32);
+        self.board_geo = Some(BoardGeo { layout: l, dx, scale: geo.scale });
+    }
+
+    fn open_board(&mut self) {
+        if self.flyout.visible() {
+            self.close_flyout();
+        }
+        self.hide_tip();
+        self.board_scroll = [0.0; 4];
+        self.board_hover = None;
+        self.press = None;
+        self.drag = None;
+        // Opening is the moment to want fresh cards.
+        if self.board_file.as_ref().is_none_or(|b| now_ms() - b.updated_at > BOARD_STALE_MS) && !self.pending.iter().any(|p| p.task.is_none()) {
+            self.send(Request::Refresh, None, String::new());
+        }
+        self.draw_board();
+        self.draw_toasts();
+    }
+
+    fn close_board(&mut self) {
+        if !self.board.visible() {
+            return;
+        }
+        self.board.hide();
+        self.board_geo = None;
+        self.board_hover = None;
+        self.press = None;
+        self.drag = None;
+        self.draw_toasts();
+    }
+
+    /// Board DIPs of a point in the board window's pixels.
+    fn board_point(&self, x: i32, y: i32) -> Option<(f32, f32)> {
+        let g = self.board_geo.as_ref()?;
+        Some((x as f32 / g.scale - g.dx, y as f32 / g.scale))
+    }
+
+    fn board_move(&mut self, x: i32, y: i32) {
+        let Some((bx, by)) = self.board_point(x, y) else { return };
+        let folders = if self.drag.is_some() || self.press.is_some() { self.board_folders() } else { Vec::new() };
+        let Some(g) = self.board_geo.as_ref() else { return };
+        // A press that travels far enough on a card picks it up.
+        if self.drag.is_none()
+            && let Some(press) = &self.press
+            && let Some(BoardHit::Card(column, key)) = &press.hit
+            && (bx - press.x).hypot(by - press.y) > DRAG_SLOP
+            && let Some((_, rect)) = g.layout.card_rect(key, &self.board_scroll)
+        {
+            let _ = rect;
+            let mut size = (0.0, 0.0);
+            let _ = self.renderer.render(1.0, 1.0, 1.0, TRANSPARENT, |p| size = board_ui::ghost_size(p));
+            let from = self.board_file.as_ref().and_then(|b| b.state_column(key)).unwrap_or(*column);
+            self.drag = Some(Drag { key: key.clone(), from, x: 0.0, y: 0.0, w: size.0, h: size.1, over: None });
+            self.board_hover = None;
+        }
+        if let Some(press) = &self.press
+            && let Some(d) = self.drag.as_mut()
+        {
+            // The chip rides just below and right of the pointer, like a
+            // dragged file, so what lies under the pointer stays in sight.
+            let _ = press.grab;
+            (d.x, d.y) = board_ui::ghost_at(g.layout.card, bx, by, d.w, d.h);
+            let over = g.layout.drop_at(bx, by, &self.board_scroll, &folders);
+            // Back over its own column is no move at all.
+            d.over = over.filter(|o| *o != Drop::Target(Target::Column(d.from)));
+            self.board_dirty = true;
+            return;
+        }
+        let hover = g.layout.hit(bx, by, &self.board_scroll);
+        if hover != self.board_hover {
+            self.board_hover = hover;
+            self.board_dirty = true;
+        }
+    }
+
+    fn board_down(&mut self, x: i32, y: i32) {
+        let Some((bx, by)) = self.board_point(x, y) else { return };
+        let Some(g) = self.board_geo.as_ref() else { return };
+        let hit = g.layout.hit(bx, by, &self.board_scroll);
+        let grab = match &hit {
+            Some(BoardHit::Card(_, key)) => g.layout.card_rect(key, &self.board_scroll).map_or((0.0, 0.0), |(_, r)| (r.x - bx, r.y - by)),
+            _ => (0.0, 0.0),
+        };
+        self.press = Some(Press { hit, x: bx, y: by, grab });
+    }
+
+    fn board_up(&mut self, x: i32, y: i32) {
+        let press = self.press.take();
+        if let Some(d) = self.drag.take() {
+            self.board_dirty = true;
+            match d.over {
+                Some(Drop::Target(t)) => self.drop_card(&d.key, d.from, t),
+                Some(Drop::Blocked(_)) => self.say(self.settings.language.board().cannot_drop.to_owned(), Tone::Error),
+                None => {}
+            }
+            return;
+        }
+        let Some((bx, by)) = self.board_point(x, y) else { return };
+        let Some(g) = self.board_geo.as_ref() else { return };
+        let hit = g.layout.hit(bx, by, &self.board_scroll);
+        let on_card = g.layout.card.contains(bx, by);
+        // A click is a press and a release on the same thing.
+        if press.as_ref().map(|p| &p.hit) != Some(&hit) {
+            return;
+        }
+        match hit {
+            Some(BoardHit::Close) => self.close_board(),
+            Some(BoardHit::Refresh) => {
+                self.send(Request::Refresh, None, String::new());
+                self.say(self.settings.language.board().refreshing.to_owned(), Tone::Info);
+            }
+            Some(BoardHit::Filter(f)) => {
+                self.board_filter = f;
+                self.board_scroll = [0.0; 4];
+                self.board_dirty = true;
+            }
+            Some(BoardHit::Card(_, key)) => {
+                if let Some(url) = self.board_file.as_ref().and_then(|b| b.card(&key)).map(|c| c.url.clone()).filter(|u| !u.is_empty()) {
+                    shell::open_url(&url);
+                }
+            }
+            Some(BoardHit::Session(key)) => self.open_chat(&key),
+            Some(BoardHit::NewChat(_)) => self.say(self.settings.language.board().hint.to_owned(), Tone::Info),
+            None if !on_card => self.close_board(),
+            None => {}
+        }
+    }
+
+    fn board_wheel(&mut self, delta: i32) {
+        let Some(g) = self.board_geo.as_ref() else { return };
+        // The well under the pointer scrolls; outside any, the first that can.
+        let (cx, cy) = cursor_over(self.board.hwnd()).and_then(|(x, y)| self.board_point(x, y)).unwrap_or((-1.0, -1.0));
+        let Some(i) = (0..4).find(|&i| g.layout.lanes[i].contains(cx, cy)) else { return };
+        let next = (self.board_scroll[i] - delta as f32 / 120.0 * SCROLL_STEP).clamp(0.0, g.layout.scroll_max[i]);
+        if next != self.board_scroll[i] {
+            self.board_scroll[i] = next;
+            self.board_hover = None;
+            self.board_dirty = true;
+        }
+    }
+
+    fn drop_card(&mut self, key: &str, from: Column, target: Target) {
+        let words = self.settings.language.board();
+        match target {
+            Target::Column(to) if to == from => {}
+            Target::Column(to) => self.send(Request::Move { task: key.to_owned(), to }, Some(key), words.moving.to_owned()),
+            t => self.send(Request::Assign { task: key.to_owned(), target: t }, Some(key), words.sending.to_owned()),
+        }
+    }
+
+    /// Leave a request for the mod and wait for its reply.
+    fn send(&mut self, r: Request, task: Option<&str>, label: String) {
+        let now = now_ms();
+        self.salt = self.salt.wrapping_add(0x9E37).wrapping_mul(31) ^ (now as u32);
+        let id = request_id(now, self.salt);
+        if self.mailbox.send(&id, now, &r).is_err() {
+            self.say(self.settings.language.board().write_failed.to_owned(), Tone::Error);
+            return;
+        }
+        self.pending.push(Pending { id, at: now, task: task.map(str::to_owned), label });
+        self.timer(T_BOARD, BOARD_TICK_MS);
+        self.board_dirty = true;
+    }
+
+    fn say(&mut self, text: String, tone: Tone) {
+        self.status = Some((Status { text, tone }, now_ms()));
+        self.board_dirty = true;
+    }
+
+    /// Replies in, timeouts out.
+    fn read_replies(&mut self, now: i64) {
+        if self.pending.is_empty() {
+            return;
+        }
+        self.mailbox.sweep(now);
+        let mut done = Vec::new();
+        for p in &self.pending {
+            if let Some(reply) = self.mailbox.reply(&p.id) {
+                done.push((p.id.clone(), Some(reply)));
+            } else if now - p.at > REQUEST_TIMEOUT_MS {
+                done.push((p.id.clone(), None));
+            }
+        }
+        for (id, reply) in done {
+            self.mailbox.forget(&id);
+            let quiet = self.pending.iter().any(|p| p.id == id && p.task.is_none());
+            self.pending.retain(|p| p.id != id);
+            match reply {
+                // A refresh says nothing when it went well: the cards speak.
+                Some(r) if r.ok && quiet => {}
+                Some(r) => {
+                    if r.ok
+                        && let Some(a) = r.assignment()
+                    {
+                        self.seen_holders.retain(|b| b.task != a.task);
+                        self.seen_holders.push(a.clone());
+                        self.assignments.retain(|b| b.task != a.task);
+                        self.assignments.push(a);
+                    }
+                    self.say(r.text, if r.ok { Tone::Ok } else { Tone::Error })
+                }
+                None => self.say(self.settings.language.board().timeout.to_owned(), Tone::Error),
+            }
+        }
+        self.board_dirty = true;
+    }
+
     fn on_taskbar_created(&mut self) {
         self.strip.forget();
         self.strip_key = None;
@@ -814,6 +1214,9 @@ fn with_app(f: impl FnOnce(&mut App)) {
         f(app);
         while let Some(input) = crate::win::next_input() {
             app.on_input(input);
+        }
+        if std::mem::take(&mut app.board_dirty) && app.board.visible() {
+            app.draw_board();
         }
     });
 }
@@ -907,6 +1310,11 @@ pub fn quit_running(timeout_ms: u32) -> bool {
         let asked = PostThreadMessageW(thread, WM_QUIT, WPARAM(0), LPARAM(0)).is_ok();
         let ended = asked && WaitForSingleObject(process, timeout_ms) == WAIT_OBJECT_0;
         let _ = CloseHandle(process);
+        // The guard leaves with its child: wait for it too, so the exe is free.
+        let until = std::time::Instant::now() + std::time::Duration::from_millis(u64::from(timeout_ms));
+        while ended && crate::guard::guard_running() && std::time::Instant::now() < until {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
         ended
     }
 }
@@ -949,7 +1357,8 @@ pub fn run() {
             return;
         };
         let dir = app.store.dir().to_path_buf();
-        let _ = app.store.write_tray(now_ms());
+        let _ = app.store.write_tray(now_ms(), app.settings.quiet_helpers);
+        app.mailbox.sweep(now_ms());
         APP.set(Some(app));
         with_app(App::refresh);
 

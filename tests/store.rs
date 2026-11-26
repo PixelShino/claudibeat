@@ -81,8 +81,8 @@ fn writes_ack_atomically() {
 #[test]
 fn writes_tray() {
     let dir = scratch("writes_tray");
-    Store::new(dir.clone()).write_tray(7).unwrap();
-    assert_eq!(fs::read_to_string(dir.join("tray.json")).unwrap(), r#"{"v":1,"at":7}"#);
+    Store::new(dir.clone()).write_tray(7, true).unwrap();
+    assert_eq!(fs::read_to_string(dir.join("tray.json")).unwrap(), r#"{"v":1,"at":7,"quietHelpers":true}"#);
 }
 
 #[test]
@@ -115,6 +115,6 @@ fn a_deleted_session_file_is_forgotten() {
 fn tray_is_not_written_without_the_mod() {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("no_mod_here");
     let _ = fs::remove_dir_all(&dir);
-    assert!(Store::new(dir.clone()).write_tray(1).is_ok());
+    assert!(Store::new(dir.clone()).write_tray(1, false).is_ok());
     assert!(!dir.exists(), "claudibeat must not create the mod's folder");
 }

@@ -11,6 +11,7 @@ fn row(key: &str, state: SessionState, link: bool) -> Row {
         desktop_id: Some(key.into()),
         title: format!("Сессия {key}"),
         project: "demo".into(),
+        cwd: String::new(),
         link: link.then(|| format!("claude://claude.ai/epitaxy/{key}")),
         state,
         ask: Some("Какой вариант оставить?".into()),
@@ -18,6 +19,7 @@ fn row(key: &str, state: SessionState, link: bool) -> Row {
         doing: Some("запускает тесты".into()),
         needs_you: state != SessionState::Working,
         last_activity_at: 0,
+        parent: None,
     }
 }
 

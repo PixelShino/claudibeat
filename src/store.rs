@@ -3,6 +3,7 @@
 //! The mods write atomically, but a reader still meets torn files: a file that
 //! does not parse keeps the value it had at the last good read.
 
+use crate::board::{Assignment, AssignmentsFile, BoardFile};
 use crate::model::{AccountFile, AckFile, IndexEntry, IndexFile, SessionFile, Versioned};
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
@@ -24,6 +25,9 @@ pub struct Snapshot {
     /// Keyed by the file name without `.json`.
     pub acks: HashMap<String, AckFile>,
     pub account: Option<AccountFile>,
+    /// The Plane board the mod keeps; none without Plane.
+    pub board: Option<BoardFile>,
+    pub assignments: Vec<Assignment>,
 }
 
 /// Size and modification time: a file whose stamp has not moved is not read again.
@@ -46,7 +50,7 @@ impl Store {
 
     /// `%USERPROFILE%\.claude\status-band`.
     pub fn default_dir() -> PathBuf {
-        let home = std::env::var_os("USERPROFILE").map(PathBuf::from).unwrap_or_default();
+        let home = crate::win::shell::profile_dir();
         home.join(".claude").join("status-band")
     }
 
@@ -61,7 +65,11 @@ impl Store {
         let account = self.load::<AccountFile>(&account_path, fs::metadata(&account_path).ok().map(|m| stamp_of(&m)));
         let files = self.load_dir::<SessionFile>("sessions").into_iter().map(|(_, f)| f).collect();
         let acks = self.load_dir::<AckFile>("acks").into_iter().collect();
-        Snapshot { index, files, acks, account }
+        let board_path = self.dir.join("board.json");
+        let board = self.load::<BoardFile>(&board_path, fs::metadata(&board_path).ok().map(|m| stamp_of(&m)));
+        let assign_path = self.dir.join("assignments.json");
+        let assignments = self.load::<AssignmentsFile>(&assign_path, fs::metadata(&assign_path).ok().map(|m| stamp_of(&m))).map(|f| f.items).unwrap_or_default();
+        Snapshot { index, files, acks, account, board, assignments }
     }
 
     pub fn write_ack(&self, key: &str, now_ms: i64) -> io::Result<()> {
@@ -71,11 +79,12 @@ impl Store {
 
     /// Tells the status-band mod that a tray speaks for it, so it stays silent.
     /// Without the mod's folder there is nobody to tell, and nothing is created.
-    pub fn write_tray(&self, now_ms: i64) -> io::Result<()> {
+    /// `quiet_helpers` asks the mod to take the app's blue dot off helper chats.
+    pub fn write_tray(&self, now_ms: i64, quiet_helpers: bool) -> io::Result<()> {
         if !self.dir.is_dir() {
             return Ok(());
         }
-        write_atomic(&self.dir.join("tray.json"), &format!(r#"{{"v":1,"at":{now_ms}}}"#))
+        write_atomic(&self.dir.join("tray.json"), &format!(r#"{{"v":1,"at":{now_ms},"quietHelpers":{quiet_helpers}}}"#))
     }
 
     fn load_dir<T: DeserializeOwned + Versioned>(&mut self, sub: &str) -> Vec<(String, T)> {
@@ -130,7 +139,7 @@ fn parse<T: DeserializeOwned + Versioned>(text: &str) -> Option<T> {
 }
 
 /// Write `<path>.tmp`, then rename over the target in one step.
-fn write_atomic(path: &Path, text: &str) -> io::Result<()> {
+pub(crate) fn write_atomic(path: &Path, text: &str) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }

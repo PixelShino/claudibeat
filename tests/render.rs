@@ -2,7 +2,7 @@ use claudibeat::render::strip::{StripItem, StripModel, layout_strip, paint_strip
 use claudibeat::render::{Renderer, TRANSPARENT};
 
 fn model(waiting: usize) -> StripModel {
-    StripModel { waiting, done: 2, working: 4, mem_percent: 76, mem_alert: false, limit: Some((34, 0.34)) }
+    StripModel { waiting, done: 2, working: 4, tasks: None, mem_percent: 76, mem_alert: false, limit: Some((34, 0.34)) }
 }
 
 #[test]

@@ -21,6 +21,16 @@ pub enum Icon {
     Gear,
     /// Chevron pointing left: back.
     Back,
+    /// Three columns of cards: the task board.
+    Board,
+    /// A circular arrow: fetch again.
+    Refresh,
+    /// A plus: something new.
+    Plus,
+    /// Hollow dot: a quiet session.
+    Idle,
+    /// Two checks: mark everything seen.
+    SeenAll,
 }
 
 /// Draw `icon` centred on (`cx`, `cy`), `size` DIPs across.
@@ -84,6 +94,37 @@ pub fn icon(p: &Painter, icon: Icon, cx: f32, cy: f32, size: f32, color: Color) 
         }
         Icon::Back => {
             p.polyline(&[at(8.75, 3.0), at(4.75, 7.0), at(8.75, 11.0)], 1.5 * k, color);
+        }
+        Icon::Board => {
+            // Three wells, filled to different depths, like a board at work.
+            for (x, h) in [(1.75, 10.5), (5.75, 7.0), (9.75, 4.5)] {
+                let o = at(x, 1.75);
+                p.stroke_round_rect(Rect::new(o.0, o.1, 2.5 * k, 10.5 * k), 1.0 * k, 1.25 * k, color);
+                let f = at(x, 1.75 + 10.5 - h);
+                p.fill_round(Rect::new(f.0, f.1, 2.5 * k, h * k), 1.0 * k, color);
+            }
+        }
+        Icon::Refresh => {
+            let mut points = Vec::with_capacity(24);
+            for i in 0..=20 {
+                let a = -0.35 + (i as f32 / 20.0) * 5.2;
+                points.push(at(7.0 + 4.6 * a.cos(), 7.0 + 4.6 * a.sin()));
+            }
+            p.polyline(&points, 1.4 * k, color);
+            let end = *points.last().unwrap_or(&at(7.0, 2.4));
+            p.polyline(&[(end.0 - 2.6 * k, end.1 - 1.0 * k), end, (end.0 - 0.6 * k, end.1 + 2.5 * k)], 1.4 * k, color);
+        }
+        Icon::Plus => {
+            line(7.0, 2.5, 7.0, 11.5, 1.5);
+            line(2.5, 7.0, 11.5, 7.0, 1.5);
+        }
+        Icon::Idle => {
+            let c = at(7.0, 7.0);
+            p.stroke_circle(c.0, c.1, 4.0 * k, 1.4 * k, color);
+        }
+        Icon::SeenAll => {
+            p.polyline(&[at(1.0, 7.5), at(4.0, 10.5), at(9.5, 4.0)], 1.4 * k, color);
+            p.polyline(&[at(6.75, 10.0), at(7.25, 10.5), at(12.75, 4.0)], 1.4 * k, color);
         }
     }
 }

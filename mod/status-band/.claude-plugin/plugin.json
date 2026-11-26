@@ -1,0 +1,36 @@
+{
+  "name": "status-band",
+  "version": "0.1.0",
+  "description": "Полоса статуса над полем ввода: какие сессии ждут тебя или закончили, агенты, лимиты и задачник Plane",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "pixel"
+  },
+  "userConfig": {
+    "planeUrl": {
+      "type": "string",
+      "title": "Plane: адрес",
+      "description": "Пусто — base из ~/.secrets/plane.json",
+      "default": ""
+    },
+    "planeWorkspace": {
+      "type": "string",
+      "title": "Plane: workspace",
+      "description": "Пусто — workspace из ~/.secrets/plane.json",
+      "default": ""
+    },
+    "planeApiKey": {
+      "type": "string",
+      "title": "Plane: API-ключ",
+      "description": "Пусто — key из ~/.secrets/plane.json, затем PLANE_API_KEY сервера plane в ~/.claude.json",
+      "default": "",
+      "sensitive": true
+    },
+    "inboxProject": {
+      "type": "string",
+      "title": "Plane: проект для задач без метки",
+      "description": "Идентификатор проекта, куда падают задачи без #метки",
+      "default": "INBOX"
+    }
+  }
+}

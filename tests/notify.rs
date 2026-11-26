@@ -11,6 +11,7 @@ fn row(key: &str, state: SessionState, needs_you: bool) -> Row {
         desktop_id: Some(key.into()),
         title: key.into(),
         project: "p".into(),
+        cwd: String::new(),
         link: None,
         state,
         ask: None,
@@ -18,6 +19,7 @@ fn row(key: &str, state: SessionState, needs_you: bool) -> Row {
         doing: None,
         needs_you,
         last_activity_at: 0,
+        parent: None,
     }
 }
 

@@ -52,6 +52,10 @@ pub struct IndexEntry {
     pub last_activity_at: i64,
     #[serde(default)]
     pub link: Option<String>,
+    /// The chat that started this one, when it is a helper the person never
+    /// took in (filed into a group or pinned); the mod decides.
+    #[serde(default)]
+    pub parent: Option<String>,
 }
 
 #[derive(Deserialize, Clone, Debug)]

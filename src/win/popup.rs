@@ -10,7 +10,7 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{PCWSTR, w};
 
 const CLASS: PCWSTR = w!("claudibeat.popup");
-const SURFACES: [Surface; 4] = [Surface::Strip, Surface::Flyout, Surface::Toasts, Surface::Tooltip];
+const SURFACES: [Surface; 5] = [Surface::Strip, Surface::Flyout, Surface::Toasts, Surface::Tooltip, Surface::Board];
 
 fn surface_of(hwnd: HWND) -> Option<Surface> {
     // SAFETY: reads a value we stored on our own window.
@@ -43,7 +43,7 @@ impl Popup {
     /// elsewhere); toasts never do; the tooltip ignores the mouse entirely.
     pub fn new(instance: HINSTANCE, surface: Surface) -> Option<Popup> {
         let mut ex = WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
-        if surface != Surface::Flyout {
+        if !matches!(surface, Surface::Flyout | Surface::Board) {
             ex |= WS_EX_NOACTIVATE;
         }
         if surface == Surface::Tooltip {
@@ -74,7 +74,7 @@ impl Popup {
             // SAFETY: z-order and visibility of our own window.
             unsafe {
                 let _ = SetWindowPos(self.hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
-                if self.surface == Surface::Flyout {
+                if matches!(self.surface, Surface::Flyout | Surface::Board) {
                     let _ = SetForegroundWindow(self.hwnd);
                 }
             }

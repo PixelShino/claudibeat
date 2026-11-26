@@ -1,0 +1,46 @@
+#!/bin/sh
+# Refuses a commit that adds anything private: tokens, e-mail addresses,
+# personal Windows paths, real session ids, server addresses, and every
+# pattern in the owner's private list (kept OUTSIDE the repo, since the list
+# itself is private): ~/.claude/private-words.txt, one extended regex a line,
+# '#' starts a comment.
+#
+#   .githooks/pre-commit          check what is staged (git runs this)
+#   .githooks/pre-commit --all    check every tracked file
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+
+generic='gh[pousr]_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{10,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY'
+generic="$generic|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
+generic="$generic|[A-Za-z]:[\\\\/]+Users[\\\\/]+[A-Za-z0-9._-]+"
+generic="$generic|local_[0-9a-f]{8}-[0-9a-f]{4}-"
+generic="$generic|(^|[^0-9.])(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])){3}([^0-9.]|$)"
+# What may stay although it looks like the above.
+allowed='local_0{8}-|plane\.example|noreply@anthropic\.com|users\.noreply\.github\.com|127\.0\.0\.1|0\.0\.0\.0|[Uu]sers[\\\\/]+(you|<you>|<user>|USER|x)([\\\\/"]|$)'
+
+private="$HOME/.claude/private-words.txt"
+words=''
+if [ -f "$private" ]; then
+    words=$(grep -v '^[[:space:]]*#' "$private" | grep -v '^[[:space:]]*$' | tr -d '\r' | paste -sd'|' -)
+fi
+pattern="$generic"
+[ -n "$words" ] && pattern="$pattern|$words"
+
+if [ "$1" = "--all" ]; then
+    # Plain grep, as for staged lines: git grep's regex lacks \b.
+    hits=$(git ls-files -z -- . ':!.githooks/pre-commit' | xargs -0 grep -nIiE "$pattern" -- 2>/dev/null | grep -viE "$allowed")
+else
+    hits=$(git diff --cached -U0 --no-color --diff-filter=ACMR -- . ':!.githooks/pre-commit' |
+        awk '/^\+\+\+ /{file=substr($0,7); next} /^@@/{split($3,a,","); line=substr(a[1],2)-1; next}
+             /^\+/{line++; print file ":" line ":" substr($0,2); next} /^ /{line++}' |
+        grep -iE "$pattern" | grep -viE "$allowed")
+fi
+
+if [ -n "$hits" ]; then
+    echo "privacy: this would put something private into the repo:" >&2
+    echo "$hits" | head -30 >&2
+    echo "Remove it, or if it is truly public, widen 'allowed' in .githooks/pre-commit." >&2
+    exit 1
+fi
+[ -f "$private" ] || echo "privacy: no $private; only the generic checks ran" >&2
+exit 0

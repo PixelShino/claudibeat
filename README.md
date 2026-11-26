@@ -11,7 +11,7 @@
 [![Windows 11](https://img.shields.io/badge/Windows-11-1d1d1d?style=flat-square&logo=windows11&logoColor=white)](#requirements)
 [![Rust](https://img.shields.io/badge/Rust-stable-1d1d1d?style=flat-square&logo=rust&logoColor=white)](#build)
 [![License: MIT](https://img.shields.io/badge/license-MIT-1d1d1d?style=flat-square)](LICENSE)
-[![exe size](https://img.shields.io/badge/exe-801_KiB-5d5d5d?style=flat-square)](#footprint)
+[![exe size](https://img.shields.io/badge/exe-1.1_MiB-5d5d5d?style=flat-square)](#footprint)
 [![memory](https://img.shields.io/badge/memory-9.6_MB-5d5d5d?style=flat-square)](#footprint)
 [![network: none](https://img.shields.io/badge/network-none-5d5d5d?style=flat-square)](#privacy)
 
@@ -31,7 +31,7 @@ Subagents don't count. One chat tab is one session, however many helpers it spaw
 
 <p align="center"><img src="docs/media/en/tooltip.png" width="300" alt="Tooltip above the working counter: 4 sessions working"></p>
 
-**The sessions window.** Waiting sessions come first, longest wait on top, with the question they asked. Finished sessions show their project, working ones show what they're doing right now ("Editing src/flows/refund.ts"). Each group shows three rows and folds the rest into "and N more"; the list scrolls on its own if it reaches the top of the screen while memory and limits stay put. Esc or a click anywhere else closes it.
+**The sessions window.** Waiting sessions come first, longest wait on top, with the question they asked. Finished sessions show their project, working ones show what they're doing right now ("Editing src/flows/refund.ts"). Each group shows three rows and folds the rest into "and N more"; the list scrolls on its own if it reaches the top of the screen while memory and limits stay put. Esc or a click anywhere else closes it. The double check next to the gear marks every waiting and finished session seen, so none hangs there as waiting for you.
 
 **Memory that tells you who's eating it.** Claude is counted together with every process it started (MCP servers, terminals, dev servers), so "Claude: 6.2 GB" means what you think it means. Chrome and Python outside Claude get their own lines. The numbers are private working sets, the same figure Task Manager's "Memory" column shows; on the author's machine the Claude group came out at 6,221 MB against 6,188 MB from the performance counters.
 
@@ -48,20 +48,49 @@ Subagents don't count. One chat tab is one session, however many helpers it spaw
 
 **Quiet when you need it.** Tick **Do not disturb** at the bottom of the sessions window and no toasts or sounds arrive. The strip keeps counting, so nothing is lost, and switching it off doesn't replay what you missed.
 
-**Settings in the same window.** The gear next to the title turns the sessions window into its settings: do not disturb, the notification sound, starting with Windows, the language. The arrow, or Esc, takes you back to the list.
+**Quiet helper chats.** Chats that another chat started stay out of the counts, the list, the board, the toasts and the sound, and the mod takes the blue dot off them in Claude's sidebar. One exception: a helper waiting for your answer shows up and toasts, or it would hang there unseen. A helper you filed into a group or pinned counts as an ordinary chat. On by default; switch it off in the settings or the menu.
 
-<p align="center"><img src="docs/media/en/settings.png" width="420" alt="The settings page in the sessions window: do not disturb, notification sound, start with Windows, and English or Russian"></p>
+**Settings in the same window.** The gear next to the title turns the sessions window into its settings: do not disturb, the notification sound, quiet helper chats, starting with Windows, the language. The arrow, or Esc, takes you back to the list.
+
+<p align="center"><img src="docs/media/en/settings.png" width="420" alt="The settings page in the sessions window: do not disturb, notification sound, quiet helper chats, start with Windows, and English or Russian"></p>
 
 **Light or dark, like the taskbar.** claudibeat follows "Choose your default Windows mode" and switches the moment you do: white counters on a dark taskbar, dark cards above it.
 
 <p align="center"><img src="docs/media/en/dark.png" width="420" alt="The sessions window and the strip in Windows dark mode: light text on dark cards, the waiting counter as a light pill"></p>
 
+**Plane task board.** When the status-band mod fetches Plane, the strip gains an in-progress counter that opens a board: Not taken, In progress, Done today, and the live Claude chats beside them. Drag a task: dropped on a chat it goes there as a message, and the agent takes it, does it and closes it in Plane with a comment; dropped on a folder under New agent it starts a new chat there; dropped on another column it changes state. A click opens the task in Plane. claudibeat still never touches the network: the mod talks to Plane, claudibeat leaves it requests in the status-band folder.
+
+<p align="center"><img src="docs/media/en/board.png" width="760" alt="The Plane board above the strip: three task columns and the agents column with folders for a new chat"></p>
+
+<p align="center"><img src="docs/media/en/board-drag.png" width="760" alt="A task dragged onto a chat: the chat's row is ringed and the footer says where it goes"></p>
+
 **English or Russian.** English is the default. Pick **Русский** at the bottom of the sessions window, in the settings or in the right-click menu; the choice is remembered.
+
+## Install
+
+Pick one; each ends with the strip in your taskbar.
+
+```powershell
+irm https://raw.githubusercontent.com/PixelShino/claudibeat/main/install.ps1 | iex
+```
+
+```powershell
+winget install PixelShino.claudibeat
+claudibeat --setup
+```
+
+```powershell
+scoop bucket add claudibeat https://github.com/PixelShino/claudibeat
+scoop install claudibeat
+claudibeat --setup
+```
+
+`claudibeat --setup` puts the status-band mod (built into the exe) in `%USERPROFILE%\.claude\mods\status-band`, adds it to `CLAUDE_CODE_PLUGIN_DIRS` in Claude's `settings.json`, turns on starting with Windows and starts the strip. Then open a new Claude chat: chats opened earlier run without the mod. If you already keep your own copy of the mod there, setup leaves it alone.
 
 ## Requirements
 
 - Windows 11 (tested on build 26200). The taskbar trick relies on Windows 11's layered child windows.
-- [Claude Desktop](https://claude.ai/download) with the **status-band** mod, which writes session state to `%USERPROFILE%\.claude\status-band\`. claudibeat only reads that folder; see [How it works](#how-it-works) for the exact files.
+- [Claude Desktop](https://claude.ai/download) with the **status-band** mod ([mod/status-band](mod/status-band); `claudibeat --setup` installs it), which writes session state to `%USERPROFILE%\.claude\status-band\`. claudibeat only reads that folder; see [How it works](#how-it-works) for the exact files.
 
 ## Build
 
@@ -71,14 +100,15 @@ cargo +stable-x86_64-pc-windows-gnu build --release
 .\target\release\claudibeat.exe
 ```
 
-The GNU toolchain needs no Visual Studio; the MSVC toolchain should work too but isn't tested yet. There's no installer and no runtime: one 801 KiB executable. A second copy refuses to start.
+The GNU toolchain needs no Visual Studio; the MSVC toolchain should work too but isn't tested yet. There's no runtime: one 1.1 MiB executable, the mod included. A second copy refuses to start.
 
 ## Use
 
 - **Left click** a counter: open the one chat, or the sessions window.
-- **Right click** the strip: Mark all as seen, Do not disturb, Notification sound, Start with Windows (off by default), Language, Quit.
+- **Right click** the strip: Mark all as seen, Do not disturb, Notification sound, Quiet helper chats, Start with Windows (off by default), Language, Quit.
 - **The gear** in the sessions window opens the same settings without the menu.
 - Settings live in `%APPDATA%\claudibeat\settings.json`. Start with Windows is a Task Scheduler task named `claudibeat` that runs at your sign-in, on your desktop and without elevation. Not the `Run` key: on one Windows 11 machine Explorer silently skipped claudibeat there at every sign-in. Builds that used the `Run` key move the setting over by themselves.
+- Started plainly, claudibeat is a guard: the strip runs as its child and comes back 2 s after a crash (at most 5 times in 10 minutes). Panics and every exit, with its reason, go to `%USERPROFILE%\.claude\claudibeat\claudibeat.log` (not AppData: a Claude chat sees its own package copy of AppData). Started from a Claude chat (Claude Desktop is an MSIX package, and what its chats start dies with it), claudibeat hands over to its sign-in task and leaves.
 - `claudibeat.exe --quit` closes a running copy the way its Quit item does and waits for it to exit. Use it before replacing the executable rather than killing the process: after a forced kill, Explorer has refused the new strip for several minutes. `taskkill` without `/F` works the same way.
 - `claudibeat.exe --render <dir> [--lang en|ru] [--theme light|dark]` draws every surface to PNG with invented demo sessions (that's where the pictures above come from). `claudibeat.exe --dump <file>` writes today's counts, memory and limits as JSON, handy for checking the numbers without any window.
 
@@ -94,7 +124,10 @@ Session data comes from the status-band folder, contract version 1:
 | `sessions/<key>.json` | status-band | state, question, current activity |
 | `account.json` | status-band | plan limit windows and reset times |
 | `acks/<key>.json` | both | writes `{"v":1,"ackAt":…,"by":"claudibeat"}` when you open a chat here, so the mod's own strip stops nagging too |
-| `tray.json` | claudibeat | `{"v":1,"at":…}` every 10 s; while it's fresh, the mod stays quiet and one event makes one sound |
+| `board.json`, `assignments.json` | status-band | the Plane board and which chat holds which task |
+| `requests/<id>.json` | claudibeat | a request: give a task to a chat, start a new chat, change state, refresh; claudibeat deletes it once answered |
+| `replies/<id>.json`, `claims/<id>.json` | status-band | the answer, and which session runs it; claudibeat clears them after 3 minutes |
+| `tray.json` | claudibeat | `{"v":1,"at":…,"quietHelpers":true}` every 10 s; while it's fresh, the mod stays quiet and one event makes one sound; `quietHelpers` asks the mod to clear the blue dot on helper chats |
 
 A folder watcher reacts within about 150 ms; a 2-second re-read covers anything it misses. Session merging is a line-by-line port of the mod's `mergeRows`, and the two agree on the live folder (1 / 2 / 3 / 48 on the day it was checked).
 
@@ -104,7 +137,7 @@ Measured on the author's machine (16 logical CPUs, 32 GB RAM) over three minutes
 
 | | |
 |---|---|
-| Executable | 801 KiB (`lto`, `strip`, `panic = "abort"`) |
+| Executable | 1,098 KiB with the mod inside (`lto`, `strip`, `panic = "abort"`) |
 | Memory, private working set | 9.6 MB |
 | CPU | 0.07% of the machine on average (1.1% of one core) |
 | Back after an Explorer restart | 0.97 s |

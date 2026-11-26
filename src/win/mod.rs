@@ -15,7 +15,7 @@ pub mod taskbar;
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use windows::Win32::Foundation::*;
-use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent, VK_ESCAPE};
+use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent, VK_ESCAPE};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 /// From `Win32_UI_Controls`, not worth the whole feature for one number.
@@ -32,6 +32,8 @@ pub enum Surface {
     Flyout,
     Toasts,
     Tooltip,
+    /// The Plane board: takes focus, and takes the mouse while a card is dragged.
+    Board,
 }
 
 impl Surface {
@@ -47,6 +49,12 @@ pub enum Input {
     Move(Surface, i32, i32),
     Leave(Surface),
     Click(Surface, i32, i32),
+    /// The board hears the button's press and release, not clicks: a press
+    /// may become a drag.
+    Down(Surface, i32, i32),
+    Up(Surface, i32, i32),
+    /// The mouse was taken from a dragging board (Alt+Tab, a system dialog).
+    Lost(Surface),
     RightClick(Surface),
     /// Wheel delta, 120 per notch, positive away from the person.
     Wheel(Surface, i32),
@@ -60,10 +68,12 @@ pub enum Action {
     OpenChat(String),
     OpenFlyout,
     ToggleFlyout,
+    ToggleBoard,
     MarkAllSeen,
     ToggleSound,
     ToggleAutostart,
     ToggleDnd,
+    ToggleHelpers,
     SetLanguage(crate::text::Lang),
     Quit,
 }
@@ -71,10 +81,10 @@ pub enum Action {
 thread_local! {
     static QUEUE: RefCell<VecDeque<Input>> = const { RefCell::new(VecDeque::new()) };
     static HOST: Cell<HWND> = const { Cell::new(HWND(std::ptr::null_mut())) };
-    static HAND: Cell<[bool; 4]> = const { Cell::new([false; 4]) };
+    static HAND: Cell<[bool; 5]> = const { Cell::new([false; 5]) };
     /// A click needs its press on the same window: releasing a drag from a
     /// taskbar button over the strip is not a click.
-    static PRESSED: Cell<[bool; 4]> = const { Cell::new([false; 4]) };
+    static PRESSED: Cell<[bool; 5]> = const { Cell::new([false; 5]) };
 }
 
 pub fn set_host(hwnd: HWND) {
@@ -123,6 +133,27 @@ pub(crate) fn surface_message(surface: Surface, hwnd: HWND, msg: u32, wp: WPARAM
             emit(Input::Leave(surface));
             Some(LRESULT(0))
         }
+        WM_LBUTTONDOWN if surface == Surface::Board => {
+            // SAFETY: capturing the mouse for our own window while a card may be dragged.
+            unsafe { SetCapture(hwnd) };
+            let (x, y) = point(lp);
+            emit(Input::Down(surface, x, y));
+            Some(LRESULT(0))
+        }
+        WM_LBUTTONUP if surface == Surface::Board => {
+            // The release is queued before the capture goes: giving it back
+            // sends WM_CAPTURECHANGED at once, and that «lost» must not
+            // cancel the press it ends.
+            let (x, y) = point(lp);
+            emit(Input::Up(surface, x, y));
+            // SAFETY: gives back the capture taken on the press.
+            let _ = unsafe { ReleaseCapture() };
+            Some(LRESULT(0))
+        }
+        WM_CAPTURECHANGED if surface == Surface::Board && lp.0 != hwnd.0 as isize => {
+            emit(Input::Lost(surface));
+            Some(LRESULT(0))
+        }
         WM_LBUTTONDOWN => {
             let mut p = PRESSED.get();
             p[surface.index()] = true;
@@ -165,13 +196,14 @@ pub(crate) fn surface_message(surface: Surface, hwnd: HWND, msg: u32, wp: WPARAM
         // top-level windows) means "quit": leave as the menu does, instead
         // of letting DefWindowProc destroy a popup under the app.
         WM_CLOSE => {
+            crate::guard::log(&format!("strip: WM_CLOSE on {surface:?} (taskkill without /F, or a close sent from outside)"));
             // SAFETY: ends this thread's message loop; every window is ours.
             unsafe { PostQuitMessage(0) };
             Some(LRESULT(0))
         }
         // Clicking the strip or a toast must not take focus from the
         // person's own window; only the sessions window activates itself.
-        WM_MOUSEACTIVATE if surface != Surface::Flyout => Some(LRESULT(MA_NOACTIVATE as isize)),
+        WM_MOUSEACTIVATE if !matches!(surface, Surface::Flyout | Surface::Board) => Some(LRESULT(MA_NOACTIVATE as isize)),
         WM_SETCURSOR if (lp.0 & 0xFFFF) as u32 == HTCLIENT => {
             let id = if HAND.get()[surface.index()] { IDC_HAND } else { IDC_ARROW };
             // SAFETY: loads a shared system cursor.

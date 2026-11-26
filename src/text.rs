@@ -45,6 +45,8 @@ pub struct Words {
     pub dnd: &'static str,
     pub dnd_note: &'static str,
     pub sound_note: &'static str,
+    pub helpers: &'static str,
+    pub helpers_note: &'static str,
     pub autostart_note: &'static str,
 }
 
@@ -71,6 +73,8 @@ const EN: Words = Words {
     dnd: "Do not disturb",
     dnd_note: "No toasts or sound, the strip still counts",
     sound_note: "A soft chime with each toast",
+    helpers: "Quiet helper chats",
+    helpers_note: "Chats started by other chats stay hidden",
     autostart_note: "Appears on the taskbar after you sign in",
 };
 
@@ -97,6 +101,8 @@ const RU: Words = Words {
     dnd: "Не беспокоить",
     dnd_note: "Без уведомлений и звука, счётчики работают",
     sound_note: "Мягкий сигнал с каждым уведомлением",
+    helpers: "Тихие помощники",
+    helpers_note: "Чаты, запущенные другими чатами, не видны",
     autostart_note: "Появляется на панели задач после входа",
 };
 
@@ -317,4 +323,125 @@ pub fn local_tz_offset_min() -> i32 {
     let kind = unsafe { GetTimeZoneInformation(&mut info) };
     let daylight = if kind == 2 { info.DaylightBias } else { info.StandardBias };
     -(info.Bias + daylight)
+}
+
+/// The Plane board's words.
+pub struct BoardWords {
+    pub title: &'static str,
+    pub all: &'static str,
+    /// Task columns: not taken, in progress, done today.
+    pub columns: [&'static str; 3],
+    pub agents: &'static str,
+    pub new_agent: &'static str,
+    pub hint: &'static str,
+    pub empty_column: &'static str,
+    pub no_agents: &'static str,
+    pub no_board: &'static str,
+    pub updated: &'static str,
+    pub refreshing: &'static str,
+    pub sending: &'static str,
+    pub moving: &'static str,
+    pub drop_session: &'static str,
+    pub drop_new: &'static str,
+    pub drop_column: &'static str,
+    pub cannot_drop: &'static str,
+    pub timeout: &'static str,
+    pub write_failed: &'static str,
+    pub idle: &'static str,
+    pub tip_tasks: &'static str,
+    pub menu_board: &'static str,
+}
+
+const BOARD_EN: BoardWords = BoardWords {
+    title: "Plane tasks",
+    all: "All",
+    columns: ["Not taken", "In progress", "Done and in review"],
+    agents: "Agents",
+    new_agent: "New agent",
+    hint: "Drag a task onto an agent, into a new chat or to another column",
+    empty_column: "Nothing here",
+    no_agents: "No chats open",
+    no_board: "No board yet: the status-band mod has not fetched Plane",
+    updated: "updated",
+    refreshing: "Asking Plane again…",
+    sending: "sending…",
+    moving: "moving…",
+    drop_session: "Give to",
+    drop_new: "New chat in",
+    drop_column: "Move to",
+    cannot_drop: "This chat has no app link: it cannot take a task",
+    timeout: "No Claude session with the mod answered",
+    write_failed: "Could not write the request",
+    idle: "idle",
+    tip_tasks: "Plane tasks",
+    menu_board: "Task board",
+};
+
+const BOARD_RU: BoardWords = BoardWords {
+    title: "Задачи Plane",
+    all: "Все",
+    columns: ["Не взято", "В работе", "Готово и на проверке"],
+    agents: "Агенты",
+    new_agent: "Новый агент",
+    hint: "Перетащи задачу на агента, в новый чат или в другую колонку",
+    empty_column: "Пусто",
+    no_agents: "Открытых чатов нет",
+    no_board: "Доски пока нет: мод status-band ещё не забрал Plane",
+    updated: "обновлено",
+    refreshing: "Запрашиваю Plane заново…",
+    sending: "отправляю…",
+    moving: "переношу…",
+    drop_session: "Отдать",
+    drop_new: "Новый чат в",
+    drop_column: "Перенести в",
+    cannot_drop: "У этого чата нет ссылки приложения: задачу ему не отдать",
+    timeout: "Ни одна сессия Claude с модом не ответила",
+    write_failed: "Не удалось записать заявку",
+    idle: "тихо",
+    tip_tasks: "Задачи Plane",
+    menu_board: "Доска задач",
+};
+
+impl Lang {
+    pub fn board(self) -> &'static BoardWords {
+        match self {
+            Lang::En => &BOARD_EN,
+            Lang::Ru => &BOARD_RU,
+        }
+    }
+}
+
+/// «7 в работе, 50 не взято» for the strip's tooltip.
+pub fn tip_tasks(lang: Lang, doing: usize, todo: usize) -> String {
+    match lang {
+        Lang::En => format!("Plane: {doing} in progress, {todo} not taken"),
+        Lang::Ru => format!("Plane: {doing} в работе, {todo} не взято"),
+    }
+}
+
+/// «обновлено 2 мин назад», «обновлено только что».
+pub fn updated_ago(lang: Lang, ms: i64) -> String {
+    match (lang, ms) {
+        (Lang::En, m) if m < 60_000 => "updated just now".to_owned(),
+        (Lang::Ru, m) if m < 60_000 => "обновлено только что".to_owned(),
+        (Lang::En, m) => format!("updated {} ago", ago(lang, m)),
+        (Lang::Ru, m) => format!("обновлено {} назад", ago(lang, m)),
+    }
+}
+
+/// `2026-11-18 19:16:09`, local time, for the log.
+pub fn local_stamp() -> String {
+    let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64) + i64::from(local_tz_offset_min()) * 60_000;
+    let (days, rest) = (ms.div_euclid(DAY_MS), ms.rem_euclid(DAY_MS) / 1000);
+    // Civil date from days since 1970-01-01 (Howard Hinnant's algorithm).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02} {:02}:{:02}:{:02}", rest / 3600, rest / 60 % 60, rest % 60)
 }

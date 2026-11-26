@@ -110,9 +110,11 @@ const ID_QUIT: usize = 4;
 const ID_LANG_EN: usize = 10;
 const ID_LANG_RU: usize = 11;
 const ID_DND: usize = 5;
+const ID_BOARD: usize = 6;
+const ID_HELPERS: usize = 7;
 
 /// The right-click menu at the pointer. Returns the chosen action.
-pub fn menu(owner: HWND, anything_pending: bool, prefs: Prefs, lang: Lang) -> Option<Action> {
+pub fn menu(owner: HWND, anything_pending: bool, has_board: bool, prefs: Prefs, lang: Lang) -> Option<Action> {
     let check = |on: bool| if on { MF_CHECKED } else { MF_UNCHECKED };
     let words = lang.words();
     let item = |menu: HMENU, flags: MENU_ITEM_FLAGS, id: usize, text: &str| {
@@ -125,11 +127,15 @@ pub fn menu(owner: HWND, anything_pending: bool, prefs: Prefs, lang: Lang) -> Op
         let languages = CreatePopupMenu().ok()?;
         item(languages, MF_STRING | check(lang == Lang::En), ID_LANG_EN, Lang::En.name());
         item(languages, MF_STRING | check(lang == Lang::Ru), ID_LANG_RU, Lang::Ru.name());
+        if has_board {
+            item(menu, MF_STRING, ID_BOARD, lang.board().menu_board);
+        }
         let seen = if anything_pending { MF_ENABLED } else { MF_GRAYED };
         item(menu, MF_STRING | seen, ID_SEEN, words.menu_seen);
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
         item(menu, MF_STRING | check(prefs.dnd), ID_DND, words.dnd);
         item(menu, MF_STRING | check(prefs.sound), ID_SOUND, words.menu_sound);
+        item(menu, MF_STRING | check(prefs.quiet_helpers), ID_HELPERS, words.helpers);
         item(menu, MF_STRING | check(prefs.autostart), ID_AUTOSTART, words.menu_autostart);
         // The submenu belongs to the menu from here on and is destroyed with it.
         item(menu, MF_POPUP, languages.0 as usize, words.menu_language);
@@ -151,8 +157,10 @@ pub fn menu(owner: HWND, anything_pending: bool, prefs: Prefs, lang: Lang) -> Op
         }
         match id {
             ID_SEEN => Some(Action::MarkAllSeen),
+            ID_BOARD => Some(Action::ToggleBoard),
             ID_SOUND => Some(Action::ToggleSound),
             ID_DND => Some(Action::ToggleDnd),
+            ID_HELPERS => Some(Action::ToggleHelpers),
             ID_AUTOSTART => Some(Action::ToggleAutostart),
             ID_QUIT => Some(Action::Quit),
             ID_LANG_EN => Some(Action::SetLanguage(Lang::En)),

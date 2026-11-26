@@ -13,17 +13,20 @@ pub struct Settings {
     pub language: Lang,
     /// Do not disturb: no toasts and no sound until switched off.
     pub dnd: bool,
+    /// Chats another chat started stay out of the counts, the list, the
+    /// toasts and the sound, unless one of them waits on the person.
+    pub quiet_helpers: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { sound: true, language: Lang::En, dnd: false }
+        Settings { sound: true, language: Lang::En, dnd: false, quiet_helpers: true }
     }
 }
 
 impl Settings {
     pub fn default_path() -> PathBuf {
-        let base = std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_default();
+        let base = crate::win::shell::roaming_dir();
         base.join("claudibeat").join("settings.json")
     }
 
