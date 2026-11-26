@@ -1,6 +1,6 @@
 [package]
 name = "claudibeat"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 description = "Claude Desktop sessions, memory and plan limit in the left corner of the Windows 11 taskbar"
 authors = ["Dmitry Goldobin", "Claude (Anthropic)"]
