@@ -150,6 +150,15 @@ cargo +stable-x86_64-pc-windows-gnu build --release
 | Процессор | в среднем 0,07 % всей машины (1,1 % одного ядра) |
 | Возврат после перезапуска Explorer | 0,97 с |
 
+## Политика подписи кода
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org) (заявка подана; пока exe не подписан).
+
+- Коммиттеры и ревьюеры: [@PixelShino](https://github.com/PixelShino)
+- Утверждающие: [@PixelShino](https://github.com/PixelShino)
+
+Каждый релиз собирает [GitHub Actions](.github/workflows/release.yml) из помеченного тегом коммита этого репозитория, каждый запрос на подпись одобряется вручную. Приватность: программа не передаёт никакой информации в сеть, если об этом прямо не попросил пользователь или тот, кто её установил (см. ниже).
+
 ## Приватность
 
 claudibeat не ходит в сеть совсем. Он не читает `~/.claude/.credentials.json` и токены; данные о лимитах берутся из файла, который уже записал мод. В папке status-band программа пишет только `acks/`, `requests/` и `tray.json`.

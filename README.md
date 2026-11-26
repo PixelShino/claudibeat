@@ -147,6 +147,15 @@ Measured on the author's machine (16 logical CPUs, 32 GB RAM) over three minutes
 | CPU | 0.07% of the machine on average (1.1% of one core) |
 | Back after an Explorer restart | 0.97 s |
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org) (applied for; until then the exe is unsigned).
+
+- Committers and reviewers: [@PixelShino](https://github.com/PixelShino)
+- Approvers: [@PixelShino](https://github.com/PixelShino)
+
+Every release is built by [GitHub Actions](.github/workflows/release.yml) from a tagged commit in this repository, and each signing request is approved by hand. Privacy: this program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it (see below).
+
 ## Privacy
 
 claudibeat makes no network calls at all. It doesn't read `~/.claude/.credentials.json` or any token; plan usage comes from the file the mod already wrote. Inside the status-band folder it writes only `acks/` and `tray.json`.
