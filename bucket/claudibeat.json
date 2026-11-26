@@ -1,13 +1,13 @@
 {
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Claude Desktop sessions, memory and plan limit in the left corner of the Windows 11 taskbar",
   "homepage": "https://github.com/PixelShino/claudibeat",
   "license": "MIT",
   "notes": "Run 'claudibeat --setup' once: it installs the status-band mod for Claude Desktop, turns on starting with Windows and starts the strip.",
   "architecture": {
     "64bit": {
-      "url": "https://github.com/PixelShino/claudibeat/releases/download/v0.2.0/claudibeat.exe",
-      "hash": "e20cd6d9b76d9302aca69e41cc0e80fea458252f33183dda08aae7dd62f8d318"
+      "url": "https://github.com/PixelShino/claudibeat/releases/download/v0.2.1/claudibeat.exe",
+      "hash": "1cefb0bec29b65b42df540052c8fd86845fbd9bf84c87ff345667f67edd579a9"
     }
   },
   "pre_install": "Get-Process claudibeat -ErrorAction SilentlyContinue | Select-Object -First 1 | ForEach-Object { Start-Process $_.Path -ArgumentList '--quit' -Wait }",
