@@ -9,7 +9,7 @@ param(
 
 $id = 'PixelShino.claudibeat'
 $url = "https://github.com/PixelShino/claudibeat/releases/download/v$Version/claudibeat.exe"
-$schema = '1.6.0'
+$schema = '1.28.0'
 $dir = Join-Path $Out "manifests/p/PixelShino/claudibeat/$Version"
 New-Item -ItemType Directory -Force $dir | Out-Null
 
