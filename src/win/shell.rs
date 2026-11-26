@@ -22,6 +22,28 @@ pub fn open_url(url: &str) -> bool {
 }
 
 /// True while a full-screen game, video or presentation owns the screen.
+/// Whether the window in front belongs to Claude Desktop (`claude.exe`).
+pub fn claude_in_front() -> bool {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW};
+    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+    // SAFETY: plain queries with local buffers; the process handle is closed.
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd.is_invalid() {
+            return false;
+        }
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        let Ok(h) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else { return false };
+        let mut buf = [0u16; 520];
+        let mut len = buf.len() as u32;
+        let ok = QueryFullProcessImageNameW(h, PROCESS_NAME_WIN32, windows::core::PWSTR(buf.as_mut_ptr()), &mut len).is_ok();
+        let _ = CloseHandle(h);
+        ok && String::from_utf16_lossy(&buf[..len as usize]).to_ascii_lowercase().ends_with(r"\claude.exe")
+    }
+}
+
 pub fn is_busy() -> bool {
     // SAFETY: a plain query.
     let state: QUERY_USER_NOTIFICATION_STATE = unsafe { SHQueryUserNotificationState() }.unwrap_or_default();

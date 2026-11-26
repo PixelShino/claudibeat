@@ -157,6 +157,17 @@ pub fn drop_helpers(rows: &mut Vec<Row>) {
     rows.retain(|r| r.parent.is_none() || (r.state == SessionState::Waiting && r.needs_you));
 }
 
+/// The rows the person has already seen in Claude itself: opened after they
+/// started waiting or finished, or open in front of them right now. The app
+/// acks them, so they leave the counts without a toast.
+pub fn seen_in_claude(rows: &[Row], focus: &HashMap<String, i64>, current: Option<&str>) -> Vec<String> {
+    rows.iter()
+        .filter(|r| r.needs_you)
+        .filter(|r| r.desktop_id.as_deref().is_some_and(|id| current == Some(id) || focus.get(id).is_some_and(|&t| t > r.since)))
+        .map(|r| r.key.clone())
+        .collect()
+}
+
 pub fn counts(rows: &[Row]) -> Counts {
     let mut c = Counts { total: rows.len(), ..Counts::default() };
     for r in rows {

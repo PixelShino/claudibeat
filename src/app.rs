@@ -9,7 +9,7 @@
 use crate::board::{Assignment, BoardFile, Column, Mailbox, Pending, REQUEST_TIMEOUT_MS, Request, Target, project_folders, request_id};
 use crate::limits::{LimitView, limit_views, strip_limit};
 use crate::memory::{self, MemGroups};
-use crate::merge::{Row, counts, drop_helpers, groups, merge_rows, open_target};
+use crate::merge::{Row, counts, drop_helpers, groups, merge_rows, open_target, seen_in_claude};
 use crate::notify::{Notifier, ToastKind, ToastStack};
 use crate::render::board::{self as board_ui, BoardHit, BoardLayout, BoardModel, Drag, Drop, Status, Tone, layout_board, paint_board};
 use crate::render::flyout::{FlyoutHit, FlyoutLayout, FlyoutModel, FlyoutView, M_BOTTOM, M_SIDE, Prefs, layout_flyout, paint_flyout};
@@ -175,6 +175,8 @@ pub struct App {
     host: HWND,
     renderer: Renderer,
     store: Store,
+    /// When the person last opened each chat in Claude itself.
+    focus: crate::focus::FocusReader,
     settings: Settings,
     settings_path: PathBuf,
     tz: i32,
@@ -239,6 +241,7 @@ impl App {
             host,
             renderer: Renderer::new().ok()?,
             store: Store::new(Store::default_dir()),
+            focus: crate::focus::FocusReader::new(),
             settings: Settings::load(&settings_path),
             settings_path,
             tz: local_tz_offset_min(),
@@ -306,6 +309,15 @@ impl App {
         self.rows = merge_rows(&snap.index, &snap.files, &snap.acks, now);
         if self.settings.quiet_helpers {
             drop_helpers(&mut self.rows);
+        }
+        // Seen in Claude already: ack it, so it leaves the counts without a toast.
+        let focus = self.focus.read();
+        let current = crate::focus::current(&focus, shell::claude_in_front());
+        for key in seen_in_claude(&self.rows, &focus, current) {
+            let _ = self.store.write_ack(&key, now);
+            if let Some(r) = self.rows.iter_mut().find(|r| r.key == key) {
+                r.needs_you = false;
+            }
         }
         self.limits = limit_views(snap.account.as_ref(), now);
         self.board_file = snap.board;

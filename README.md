@@ -46,6 +46,7 @@ Subagents don't count. One chat tab is one session, however many helpers it spaw
 - Several sessions finishing within 2 seconds become one toast, and one session can't toast more than once per 10 seconds.
 - Full-screen games and presentations hold toasts back, silently.
 - Clicking a toast opens the chat and marks it seen. The cross only dismisses it; the counter stays.
+- Opening the chat in Claude itself counts too: claudibeat reads when you last focused each chat (Claude's own `lastFocusedAt`), and the chat you're looking at when it finishes doesn't toast at all.
 - A short soft chime is synthesised in memory (about −18 dBFS), never the system "ding". You can turn it off.
 
 **Quiet when you need it.** Tick **Do not disturb** at the bottom of the sessions window and no toasts or sounds arrive. The strip keeps counting, so nothing is lost, and switching it off doesn't replay what you missed.

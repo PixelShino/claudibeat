@@ -3,6 +3,7 @@
 pub mod app;
 pub mod board;
 pub mod cli;
+pub mod focus;
 pub mod guard;
 pub mod limits;
 pub mod memory;
