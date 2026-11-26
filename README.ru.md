@@ -95,6 +95,8 @@ claudibeat --setup
 
 ## Требования
 
+> **Ранний релиз.** claudibeat каждый день работает на одной машине: у автора, Windows 11 (сборка 26200), один монитор, Claude Desktop в виде пакета MSIX. Другие сборки Windows 11, Claude Desktop, установленный иначе, несколько мониторов и другая раскладка панели задач ещё не проверялись. Если что-то не так, [заведите issue](https://github.com/PixelShino/claudibeat/issues) и приложите `%USERPROFILE%\.claude\claudibeat\claudibeat.log`: так программа и проверяется на других машинах.
+
 - Windows 11 (проверено на сборке 26200). Встраивание в панель опирается на слоистые дочерние окна Windows 11.
 - [Claude Desktop](https://claude.ai/download) с модом **status-band** ([mod/status-band](mod/status-band); его ставит `claudibeat --setup`), который пишет состояние сессий в `%USERPROFILE%\.claude\status-band\`. claudibeat только читает эту папку, точный список файлов в разделе [Как это работает](#как-это-работает).
 

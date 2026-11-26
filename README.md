@@ -92,6 +92,8 @@ claudibeat --setup
 
 ## Requirements
 
+> **Early release.** claudibeat has been used every day on one machine: the author's Windows 11 (build 26200), one monitor, Claude Desktop as its MSIX package. Other Windows 11 builds, a Claude Desktop installed another way, several monitors or a different taskbar layout haven't been tried yet. If something looks wrong, [open an issue](https://github.com/PixelShino/claudibeat/issues) with `%USERPROFILE%\.claude\claudibeat\claudibeat.log` attached; that's how it gets tested on more machines.
+
 - Windows 11 (tested on build 26200). The taskbar trick relies on Windows 11's layered child windows.
 - [Claude Desktop](https://claude.ai/download) with the **status-band** mod ([mod/status-band](mod/status-band); `claudibeat --setup` installs it), which writes session state to `%USERPROFILE%\.claude\status-band\`. claudibeat only reads that folder; see [How it works](#how-it-works) for the exact files.
 
